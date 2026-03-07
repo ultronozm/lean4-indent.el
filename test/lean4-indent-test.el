@@ -20,6 +20,13 @@
      (setq-local indent-line-function #'lean4-indent-line-function)
      ,@body))
 
+(defmacro lean4-define-final-line-indent-test (name contents)
+  "Define NAME as a final-line indentation regression test for CONTENTS."
+  (declare (indent 1) (debug (symbolp form)))
+  `(ert-deftest ,name ()
+     (lean4-test-with-indent-buffer ,contents
+       (lean4-test--reindent-final-line-and-assert-same))))
+
 (defun lean4-test--line-string ()
   (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
 
@@ -144,43 +151,33 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (forward-line 1)
     (should (lean4-indent--line-contains-balanced-bracket-p (point)))))
 
-(ert-deftest lean4-indent--operator-continuation-with-comment ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo :=\n"
-       "  a + -- comment\n"
-       "  b")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--operator-continuation-with-comment
+ "def foo :=
+  a + -- comment
+  b")
 
-(ert-deftest lean4-indent--operator-continuation-breaks-on-comment-line ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo :=\n"
-       "  a +\n"
-       "  -- comment\n"
-       "  b")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--operator-continuation-breaks-on-comment-line
+ "def foo :=
+  a +
+  -- comment
+  b")
 
-(ert-deftest lean4-indent--coloneq-with-comment-indents ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo := -- comment\n"
-       "  bar")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--coloneq-with-comment-indents
+ "def foo := -- comment
+  bar")
 
-(ert-deftest lean4-indent--colon-with-comment-indents ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo : -- comment\n"
-       "    True")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--colon-with-comment-indents
+ "def foo : -- comment
+    True")
 
-(ert-deftest lean4-indent--equals-with-comment-indents ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo = -- comment\n"
-       "    bar")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--equals-with-comment-indents
+ "def foo = -- comment
+    bar")
 
 (ert-deftest lean4-indent--tab-does-not-move-point-in-text ()
   (lean4-test-with-indent-buffer
@@ -277,20 +274,18 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
      '(("trivial" "  trivial")
        ("trivial" "  trivial")))))
 
-(ert-deftest lean4-indent--de-morgan-final-line-keeps-indent ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "example {p q} : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=\n"
-       "  Iff.intro\n"
-       "    (fun hnpq: _ =>\n"
-       "      ⟨(fun hp: p => (hnpq (Or.inl hp))),\n"
-       "       (fun hq: q => (hnpq (Or.inr hq)))⟩)\n"
-       "    (fun hnpnq: _ =>\n"
-       "      have hnp := hnpnq.left\n"
-       "      have hnq := hnpnq.right\n"
-       "      (fun hpq: p ∨ q =>\n"
-       "        hpq.elim hnp hnq))")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--de-morgan-final-line-keeps-indent
+ "example {p q} : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>
+      have hnp := hnpnq.left
+      have hnq := hnpnq.right
+      (fun hpq: p ∨ q =>
+        hpq.elim hnp hnq))")
 
 (ert-deftest lean4-indent--fun-arrow-with-comment-indents ()
   (lean4-test-with-indent-buffer
@@ -333,34 +328,28 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
       (lean4-test--tab-indent))
     (should (equal (lean4-test--line-string) "  1"))))
 
-(ert-deftest lean4-indent--match-branches-align ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo (n : Nat) : Nat := by\n"
-       "  match n with\n"
-       "  | 0 => 0")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--match-branches-align
+ "def foo (n : Nat) : Nat := by
+  match n with
+  | 0 => 0")
 
-(ert-deftest lean4-indent--induction-branches-align ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "lemma foo (xs : List Nat) : True := by\n"
-       "  induction xs with\n"
-       "  | nil => trivial")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--induction-branches-align
+ "lemma foo (xs : List Nat) : True := by
+  induction xs with
+  | nil => trivial")
 
-(ert-deftest lean4-indent--macro-rules-branches-align ()
-  (lean4-test-with-indent-buffer
-      "macro_rules\n  | `(foo) => bar"
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--macro-rules-branches-align
+ "macro_rules
+  | `(foo) => bar")
 
-(ert-deftest lean4-indent--macro-rules-branches-align-after-comment ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "macro_rules\n"
-       "-- comment\n"
-       "  | `(foo) => bar")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--macro-rules-branches-align-after-comment
+ "macro_rules
+-- comment
+  | `(foo) => bar")
 
 (ert-deftest lean4-indent--macro-rules-inline-branches-align ()
   (lean4-test-with-indent-buffer
@@ -372,10 +361,10 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (should (equal (lean4-test--line-string)
                    "macro_rules | `(tactic| use_discharger) => `(tactic| assumption)"))))
 
-(ert-deftest lean4-indent--scoped-macro-rules-branches-align ()
-  (lean4-test-with-indent-buffer
-      "scoped macro_rules\n  | `(foo) => bar"
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--scoped-macro-rules-branches-align
+ "scoped macro_rules
+  | `(foo) => bar")
 
 (ert-deftest lean4-indent--scoped-macro-rules-inline-align ()
   (lean4-test-with-indent-buffer
@@ -387,31 +376,25 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (should (equal (lean4-test--line-string)
                    "scoped macro_rules | `([$l,*]) => `(List.cons 1 [])"))))
 
-(ert-deftest lean4-indent--wrapped-declaration-where-body ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "lemma IsOrderedRing.of_mul_nonneg [Ring R] [PartialOrder R]\n"
-       "    [ZeroLEOneClass R] (mul_nonneg : ∀ a b : R, 0 ≤ a → 0 ≤ b → 0 ≤ a * b) :\n"
-       "    IsOrderedRing R where\n"
-       "      mul_le_mul_of_nonneg_left := by")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--wrapped-declaration-where-body
+ "lemma IsOrderedRing.of_mul_nonneg [Ring R] [PartialOrder R]
+    [ZeroLEOneClass R] (mul_nonneg : ∀ a b : R, 0 ≤ a → 0 ≤ b → 0 ≤ a * b) :
+    IsOrderedRing R where
+      mul_le_mul_of_nonneg_left := by")
 
-(ert-deftest lean4-indent--wrapped-declaration-where-continuation ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "lemma foo :\n"
-       "    True\n"
-       "    where\n"
-       "      bar := by")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--wrapped-declaration-where-continuation
+ "lemma foo :
+    True
+    where
+      bar := by")
 
-(ert-deftest lean4-indent--wrapped-declaration-where-inline ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "instance [Add α] {a b : Thunk α} (εa εb : Type*) :\n"
-       "    EstimatorData (a + b) (εa × εb) where\n"
-       "      bound e := by")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--wrapped-declaration-where-inline
+ "instance [Add α] {a b : Thunk α} (εa εb : Type*) :
+    EstimatorData (a + b) (εa × εb) where
+      bound e := by")
 
 (ert-deftest lean4-indent--have-continues-arguments ()
   (lean4-test-with-indent-buffer
@@ -464,22 +447,18 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
      '(("trivial" "  trivial")
        ("trivial" "  trivial")))))
 
-(ert-deftest lean4-indent--calc-indents ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "theorem foo : True := by\n"
-       "  calc\n"
-       "    True := by")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--calc-indents
+ "theorem foo : True := by
+  calc
+    True := by")
 
-(ert-deftest lean4-indent--calc-multiline-rhs-indents-proof ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "theorem foo : True := by\n"
-       "  calc\n"
-       "    True := by\n"
-       "      exact trivial")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--calc-multiline-rhs-indents-proof
+ "theorem foo : True := by
+  calc
+    True := by
+      exact trivial")
 
 (ert-deftest lean4-indent--fun-arrow-indents ()
   (lean4-test-with-indent-buffer
@@ -504,34 +483,28 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test--insert-line-below-and-indent "exact trivial")
     (should (equal (lean4-test--line-string) "    exact trivial"))))
 
-(ert-deftest lean4-indent--label-colon-indents-one-level ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo : Cmd := `[Cli|\n"
-       "  FLAGS:\n"
-       "    output : String")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--label-colon-indents-one-level
+ "def foo : Cmd := `[Cli|
+  FLAGS:
+    output : String")
 
-(ert-deftest lean4-indent--label-colon-multi-block ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo : Cmd := `[Cli|\n"
-       "  FLAGS:\n"
-       "    output : String; \"path\"\n"
-       "\n"
-       "  ARGS:\n"
-       "    arg : Nat")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--label-colon-multi-block
+ "def foo : Cmd := `[Cli|
+  FLAGS:
+    output : String; \"path\"
 
-(ert-deftest lean4-indent--multiline-definition-and-proof ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo :\n"
-       "    Nat → Nat\n"
-       "    := by\n"
-       "  intro n\n"
-       "  exact n")
-    (lean4-test--reindent-final-line-and-assert-same)))
+  ARGS:
+    arg : Nat")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--multiline-definition-and-proof
+ "def foo :
+    Nat → Nat
+    := by
+  intro n
+  exact n")
 
 (ert-deftest lean4-indent--mathlib-freealgebra-induction ()
   (lean4-test-with-indent-buffer
@@ -861,39 +834,31 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (forward-line 2)
     (should (equal (lean4-test--line-string) "end"))))
 
-(ert-deftest lean4-indent--closing-brace-aligns ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo :=\n"
-       "  { field := 1\n"
-       "  }")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--closing-brace-aligns
+ "def foo :=
+  { field := 1
+  }")
 
-(ert-deftest lean4-indent--closing-angle-aligns ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "def foo :=\n"
-       "  ⟨\n"
-       "    1,\n"
-       "  ⟩")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--closing-angle-aligns
+ "def foo :=
+  ⟨
+    1,
+  ⟩")
 
-(ert-deftest lean4-indent--closing-angle-aligns-after-exact ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "example : True := by\n"
-       "  exact ⟨\n"
-       "        ⟩")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--closing-angle-aligns-after-exact
+ "example : True := by
+  exact ⟨
+        ⟩")
 
-(ert-deftest lean4-indent--angle-literal-multiline ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "example : True := by\n"
-       "  exact ⟨\n"
-       "    rfl,\n"
-       "    rfl")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--angle-literal-multiline
+ "example : True := by
+  exact ⟨
+    rfl,
+    rfl")
 
 (ert-deftest lean4-indent--top-level-snap-skips-namespace-comment ()
   (lean4-test-with-indent-buffer
@@ -1423,22 +1388,18 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
      '(("exact 0" "        exact 0")
        ("exact 0" "        exact 0")))))
 
-(ert-deftest lean4-indent--structure-where-fields ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "structure Foo where\n"
-       "  /-- doc -/\n"
-       "  x : Nat\n"
-       "  y : Nat")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--structure-where-fields
+ "structure Foo where
+  /-- doc -/
+  x : Nat
+  y : Nat")
 
-(ert-deftest lean4-indent--instance-where-fields ()
-  (lean4-test-with-indent-buffer
-      (concat
-       "instance : Inhabited Nat where\n"
-       "  default := 0\n"
-       "  := 1")
-    (lean4-test--reindent-final-line-and-assert-same)))
+(lean4-define-final-line-indent-test
+ lean4-indent--instance-where-fields
+ "instance : Inhabited Nat where
+  default := 0
+  := 1")
 
 (ert-deftest lean4-indent--multiline-have-with-body ()
   (lean4-test-with-indent-buffer
