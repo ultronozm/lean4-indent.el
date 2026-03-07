@@ -1597,5 +1597,19 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
      '(("| bar" "  | bar")
        ("| baz" "  | baz")))))
 
+(lean4-define-final-line-indent-test
+ lean4-indent--iff-intro-lambda-line
+ "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--de-morgan-constructor-line
+ "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)")
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here
