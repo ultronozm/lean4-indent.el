@@ -511,6 +511,14 @@ current line."
 (defun lean4-indent--line-starts-with-let-p (text)
   (lean4-indent--starts-with-p text lean4-indent--re-starts-let))
 
+(defun lean4-indent--line-starts-with-fun-form-p (text)
+  "Return non-nil if TEXT starts with a `fun` form, possibly after `(`.
+
+This also treats `classical exact fun` as a fun form."
+  (string-match-p
+   "\\`[ \t]*\\(?:([ \t]*\\)*\\(?:\\_<classical\\_>\\s-+\\_<exact\\_>\\s-+\\)?\\_<fun\\_>"
+   text))
+
 (defun lean4-indent--simple-term-head-line-p (text)
   "Return non-nil if TEXT is a single identifier-like term head."
   (let ((trim (string-trim text)))
@@ -1186,7 +1194,15 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
              (string-match-p lean4-indent--re-classical-exact-fun prev-text))
         (+ prev-indent (* 2 step)))
        ((and prev-line-ends-with-fun-arrow
-             (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-fun)
+             (lean4-indent--line-starts-with-fun-form-p prev-text)
+             anchor-pos
+             (= prev-indent (+ anchor-indent step))
+             (lean4-indent--line-ends-with-fun-arrow-p anchor-text-no-comment)
+             (lean4-indent--line-starts-with-fun-form-p anchor-text)
+             (not (lean4-indent--line-blank-p current-text)))
+        prev-indent)
+       ((and prev-line-ends-with-fun-arrow
+             (lean4-indent--line-starts-with-fun-form-p prev-text)
              (lean4-indent--line-blank-p current-text))
         prev-indent)
        (t (+ prev-indent step))))

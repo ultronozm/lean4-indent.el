@@ -1641,5 +1641,18 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
   List.recOn l
     (fun H : x ∈ [] ↦ False.elim ((mem_nil_iff _).mp H))")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--nested-fun-chain-line
+ "    (fun y l ↦
+      fun IH : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) ↦
+      fun H : x ∈ y :: l ↦")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--nested-fun-chain-body-line
+ "    (fun y l ↦
+      fun IH : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) ↦
+      fun H : x ∈ y :: l ↦
+      Or.elim (eq_or_mem_of_mem_cons H)")
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here
