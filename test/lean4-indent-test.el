@@ -1611,5 +1611,29 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
       ⟨(fun hp: p => (hnpq (Or.inl hp))),
        (fun hq: q => (hnpq (Or.inr hq)))⟩)")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--iff-intro-second-lambda-line
+ "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--top-level-theorem-after-iff-intro-example
+ "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>
+      have hnp := hnpnq.left
+      have hnq := hnpnq.right
+      (fun hpq: p ∨ q =>
+        hpq.elim hnp hnq))
+
+theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) :=")
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here

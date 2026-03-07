@@ -106,8 +106,9 @@ current line."
 
 (defconst lean4-indent--top-level-anchors
   '("attribute" "compile_inductive" "def" "instance" "partial_fixpoint"
-    "structure" "inductive" "class" "abbrev" "macro" "syntax" "notation"
-    "set_option" "open" "universe" "@[" "namespace" "section" "public section")
+    "theorem" "lemma" "example" "structure" "inductive" "class" "abbrev"
+    "macro" "syntax" "notation" "set_option" "open" "universe" "@["
+    "namespace" "section" "public section")
   "Top-level anchors that snap to column 0 when not nested.")
 
 (defconst lean4-indent--top-level-anchors-re
@@ -1028,8 +1029,6 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
       (+ mutual-indent step))
      ;; 3) Top-level snap
      ((and (lean4-indent--line-top-level-anchor-p current-text)
-           (or (not prev-noncomment) (= prev-noncomment-indent 0))
-           (not (lean4-indent--starts-with-p prev-noncomment-text lean4-indent--re-starts-namespace))
            (not (lean4-indent--inside-namespace-or-section-p (point))))
       0)
      ;; 3.5) `where` aligns with its declaration anchor.
@@ -1240,6 +1239,12 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
               (and prev-pos (lean4-indent--find-prev-paren-start-indent prev-pos prev-indent))
               last-unmatched-col
               open-paren-col
+              prev-indent))
+         ((and (not open-paren-col)
+               prev-pos
+               (lean4-indent--line-closes-paren-p prev-pos)
+               (not prev-line-ends-with-comma))
+          (or (lean4-indent--find-prev-paren-start-indent prev-pos prev-indent)
               prev-indent))
          (prev-starts-with-paren-closed
           prev-indent)
