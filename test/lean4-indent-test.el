@@ -1654,5 +1654,12 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
       fun H : x ∈ y :: l ↦
       Or.elim (eq_or_mem_of_mem_cons H)")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--orel-branch-sibling-lambda-line
+ "      Or.elim (eq_or_mem_of_mem_cons H)
+        (fun H1 : x = y ↦
+          Exists.intro [] (Exists.intro l (by rw [H1]; rfl)))
+        (fun H1 : x ∈ l ↦")
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here

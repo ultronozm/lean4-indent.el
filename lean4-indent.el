@@ -1211,6 +1211,9 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            (= prev-indent anchor-term-body-indent)
            (or (lean4-indent--simple-term-head-line-p prev-text-no-comment)
                (lean4-indent--plain-application-head-line-p prev-text-no-comment))
+           (not (and starts-with-paren
+                     prev-pos
+                     (lean4-indent--line-closes-paren-p prev-pos)))
            (lean4-indent--term-continuation-line-p current-text))
       (+ prev-indent step))
      ;; 8) Anonymous literal ⟨…⟩
