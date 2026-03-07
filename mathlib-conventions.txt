@@ -127,6 +127,10 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
           let ⟨t, (H3 : l = s ++ (x :: t))⟩ := H2
           have H4 : y  ::  l = (y :: s) ++ (x :: t) := by rw [H3]; rfl
           Exists.intro (y :: s) (Exists.intro t H4)))
+The type of all arguments of a declaration should be given explicitly, even if Lean can figure out this type information by itself. This makes it easier to understand the definition when seeing it on a webpage like GitHub. For the same reason, the return type of all declarations should also be given (Lean enforces this only for theorems). So you should follow the style of GoodStatement in this example:
+
+def BadStatement (n) := ∃ k, n + k = 3
+def GoodStatement (n : ℕ) : Prop := ∃ k : ℕ, n + k = 3
 A short declaration can be written on a single line:
 
 open Nat
@@ -221,9 +225,9 @@ lemma zero_le : ∀ n : ℕ, 0 ≤ n
   | 0 => le_rfl
   | n + 1 => add_nonneg (zero_le n) zero_le_one
 Binders 
-Use a space after binders:
+Use a space after binders. Also, the binder type should generally be written explicitly, even if Lean doesn't need this information.
 
-example : ∀ α : Type, ∀ x : α, ∃ y, y = x :=
+example : ∀ α : Type, ∀ x : α, ∃ y : α, y = x :=
   fun (α : Type) (x : α) ↦ Exists.intro x rfl
 Anonymous functions 
 Lean has several nice syntax options for declaring anonymous functions. For very simple functions, one can use the centered dot as the function argument, as in (· ^ 2) to represent the squaring function. However, sometimes it is necessary to refer to the arguments by name (e.g., if they appear in multiple places in the function body). The Lean default for this is fun x => x * x, but the ↦ arrow (inserted with \mapsto) is also valid. In mathlib the pretty printer displays ↦, and we slightly prefer this in the source as well. The lambda notation λ x ↦ x * x, while syntactically valid, is disallowed in mathlib in favor of the fun keyword.
@@ -348,7 +352,7 @@ A squeezed simp call refers to many lemmas by name, meaning that it will break w
 Profiling for performance 
 When contributing to mathlib, authors should be aware of the performance impacts of their contributions. The Lean FRO maintains benchmarking infrastructure which can be accessed by commenting !bench on a PR.
 
-Authors should assure that their contributions do not cause significant performance regressions. In particular, if the PR touches significant components of the language like adding instances, adding simp lemmas, changing imports, or creating new definitions, then authors should benchmark their changes proactively.
+Authors should assure that their contributions do not cause significant performance regressions. In particular, if the PR touches significant components of the language like adding new classes, instances, or simp lemmas, changing imports, or creating new definitions, then authors should benchmark their changes proactively.
 
 Transparency and API design 
 Central to Lean being a practically performant proof assistant is avoiding checking of definitional equality for very large terms. In the elaborator (the component of the language that converts syntax to terms), the notion of transparency is the main mechanism to avoid unfolding large definitions when unnecessary. Excluding opaque definitions, there are three levels of transparency:
