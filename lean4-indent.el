@@ -723,19 +723,17 @@ Stops at the first nonblank line that does not start with a paren."
       found)))
 
 (defun lean4-indent--find-prev-paren-start-indent (start-pos prev-indent)
-  "Find indent of a preceding line that starts with a paren and is less indented."
+  "Find indent of the nearest preceding paren-led line less indented than PREV-INDENT."
   (save-excursion
     (goto-char start-pos)
-    (let ((found nil))
+    (catch 'found
       (while (not (bobp))
         (forward-line -1)
         (let ((text (lean4-indent--line-text (point))))
           (when (and (lean4-indent--line-starts-with-paren-p text)
                      (< (lean4-indent--line-indent (point)) prev-indent))
-            (let ((indent (lean4-indent--line-indent (point))))
-              (when (or (not found) (< indent found))
-                (setq found indent))))))
-      found)))
+            (throw 'found (lean4-indent--line-indent (point))))))
+      nil)))
 
 ;;; Anchor helpers
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
@@ -1284,6 +1282,11 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
               last-unmatched-col
               open-paren-col
               prev-indent))
+         ((and prev-pos
+               anchor-pos
+               (lean4-indent--line-closes-paren-p prev-pos)
+               (lean4-indent--line-starts-with-paren-p anchor-text))
+          anchor-indent)
          ((and (not open-paren-col)
                prev-pos
                (lean4-indent--line-closes-paren-p prev-pos)
