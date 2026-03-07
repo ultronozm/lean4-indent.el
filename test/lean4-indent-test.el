@@ -16,11 +16,19 @@
      (goto-char (point-min))
      (set-syntax-table lean4-syntax-table)
      (setq-local indent-tabs-mode nil)
+     (setq-local lean4-indent-offset 2)
      (setq-local indent-line-function #'lean4-indent-line-function)
      ,@body))
 
 (defun lean4-test--line-string ()
   (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
+
+(defun lean4-test--reindent-final-line-and-assert-same ()
+  "Reindent the final line of the current buffer and assert it is unchanged."
+  (lean4-test--goto-eob)
+  (let ((before (lean4-test--line-string)))
+    (funcall #'lean4-indent-line-function)
+    (should (equal (lean4-test--line-string) before))))
 
 (defun lean4-test--goto-eob ()
   "Move point to the end of the last line of CONTENTS.
@@ -34,8 +42,17 @@ line in these specs."
     (forward-line -1))
   (end-of-line))
 
+(defun lean4-test--newline-and-indent ()
+  "Insert a newline and indent it as `newline-and-indent' would."
+  (call-interactively #'newline-and-indent))
+
+(defun lean4-test--newline-and-assert (expected)
+  "Run `newline-and-indent' and assert the new line matches EXPECTED."
+  (lean4-test--newline-and-indent)
+  (should (equal (lean4-test--line-string) expected)))
+
 (defun lean4-test--open-line-below ()
-  "Like Vim's `o`: go to EOL, insert newline, stay on the new line."
+  "Insert a newline below point without indenting it first."
   (end-of-line)
   (insert "\n"))
 
@@ -45,7 +62,10 @@ line in these specs."
   (funcall #'lean4-indent-line-function))
 
 (defun lean4-test--insert-line-below-and-indent (text)
-  "Insert TEXT on a new line below point, then indent that line."
+  "Insert TEXT on a new line below point, then reindent that line.
+
+This models typing the new line's contents first and then invoking
+`indent-line-function', which is different from raw `C-j' behavior."
   (lean4-test--open-line-below)
   (lean4-test--insert-and-indent-line text))
 
@@ -91,6 +111,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (should-not (lean4-indent--operator-continuation-p "  foo := by"))
   (should-not (lean4-indent--operator-continuation-p "  foo :=")))
 
+(ert-deftest lean4-indent--indent-region-first-line-does-not-error ()
+  (lean4-test-with-indent-buffer
+   "example : True := by\n"
+   (should
+    (condition-case nil
+        (progn
+          (indent-region (point-min) (line-end-position))
+          t)
+      (error nil)))))
+
 (ert-deftest lean4-indent--balanced-bracket-ignores-comment ()
   (lean4-test-with-indent-buffer
    (concat
@@ -119,7 +149,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo :=\n"
     "  a + -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "b")
    (should (equal (lean4-test--line-string) "  b"))))
@@ -130,7 +159,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "def foo :=\n"
     "  a +\n"
     "  -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "b")
    (should (equal (lean4-test--line-string) "  b"))))
@@ -139,7 +167,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "def foo := -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "bar")
    (should (equal (lean4-test--line-string) "  bar"))))
@@ -148,7 +175,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "def foo : -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -157,7 +183,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "def foo = -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "bar")
    (should (equal (lean4-test--line-string) "    bar"))))
@@ -167,7 +192,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "    exact trivial\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 1)
    (end-of-line)
@@ -181,7 +205,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "theorem foo [Ring R] [PartialOrder R]\n"
     "    [ZeroLEOneClass R] : True := by\n"
     "  trivial\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 2)
    (should (equal (lean4-test--line-string) "  trivial"))
@@ -217,7 +240,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "def foo := -- by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("rfl" "  rfl")
@@ -228,7 +250,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  exact trivial -- by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("rfl" "  rfl")
@@ -238,7 +259,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "if h then -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("trivial" "  trivial")
@@ -248,7 +268,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "else -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("trivial" "  trivial")
@@ -258,17 +277,30 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "do -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("trivial" "  trivial")
       ("trivial" "  trivial")))))
 
+(ert-deftest lean4-indent--de-morgan-final-line-keeps-indent ()
+  (lean4-test-with-indent-buffer
+   (concat
+    "example {p q} : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=\n"
+    "  Iff.intro\n"
+    "    (fun hnpq: _ =>\n"
+    "      ⟨(fun hp: p => (hnpq (Or.inl hp))),\n"
+    "       (fun hq: q => (hnpq (Or.inr hq)))⟩)\n"
+    "    (fun hnpnq: _ =>\n"
+    "      have hnp := hnpnq.left\n"
+    "      have hnq := hnpnq.right\n"
+    "      (fun hpq: p ∨ q =>\n"
+    "        hpq.elim hnp hnq))")
+   (lean4-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent--fun-arrow-with-comment-indents ()
   (lean4-test-with-indent-buffer
    (concat
     "fun x ↦ -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("x" "  x")
@@ -279,7 +311,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo :=\n"
     "  [1, -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("2]" "    2]")
@@ -291,7 +322,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "def foo :=\n"
     "  1\n"
     "-- +\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("2" "  2")
@@ -302,7 +332,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo : Nat :=\n"
     "        1\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 1)
    (let ((last-command nil))
@@ -314,7 +343,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo (n : Nat) : Nat := by\n"
     "  match n with\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "| 0 => 0")
    (should (equal (lean4-test--line-string) "  | 0 => 0"))))
@@ -324,14 +352,12 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "lemma foo (xs : List Nat) : True := by\n"
     "  induction xs with\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "| nil => trivial")
    (should (equal (lean4-test--line-string) "  | nil => trivial"))))
 
 (ert-deftest lean4-indent--macro-rules-branches-align ()
   (lean4-test-with-indent-buffer "macro_rules\n"
-                                 (setq lean4-indent-offset 2)
                                  (lean4-test--goto-eob)
                                  (lean4-test--insert-line-below-and-indent "| `(foo) => bar")
                                  (should (equal (lean4-test--line-string) "  | `(foo) => bar"))))
@@ -341,7 +367,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "macro_rules\n"
     "-- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "| `(foo) => bar")
    (should (equal (lean4-test--line-string) "  | `(foo) => bar"))))
@@ -350,7 +375,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "macro_rules | `(tactic| use_discharger) => `(tactic| rfl)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "macro_rules | `(tactic| use_discharger) => `(tactic| assumption)")
@@ -359,7 +383,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
 
 (ert-deftest lean4-indent--scoped-macro-rules-branches-align ()
   (lean4-test-with-indent-buffer "scoped macro_rules\n"
-                                 (setq lean4-indent-offset 2)
                                  (lean4-test--goto-eob)
                                  (lean4-test--insert-line-below-and-indent "| `(foo) => bar")
                                  (should (equal (lean4-test--line-string) "  | `(foo) => bar"))))
@@ -368,7 +391,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "scoped macro_rules | `([$l,*]) => `(List.nil)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "scoped macro_rules | `([$l,*]) => `(List.cons 1 [])")
@@ -381,7 +403,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "lemma IsOrderedRing.of_mul_nonneg [Ring R] [PartialOrder R]\n"
     "    [ZeroLEOneClass R] (mul_nonneg : ∀ a b : R, 0 ≤ a → 0 ≤ b → 0 ≤ a * b) :\n"
     "    IsOrderedRing R where\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "mul_le_mul_of_nonneg_left := by")
    (should (equal (lean4-test--line-string) "      mul_le_mul_of_nonneg_left := by"))))
@@ -392,7 +413,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "lemma foo :\n"
     "    True\n"
     "    where\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "bar := by")
    (should (equal (lean4-test--line-string) "      bar := by"))))
@@ -402,7 +422,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "instance [Add α] {a b : Thunk α} (εa εb : Type*) :\n"
     "    EstimatorData (a + b) (εa × εb) where\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "bound e := by")
    (should (equal (lean4-test--line-string) "      bound e := by"))))
@@ -412,7 +431,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have h_int_term1 : IntervalIntegrable\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("(fun x ↦ True) volume a b := by"
@@ -425,7 +443,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have hu_cont :\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("True" "      True")))))
@@ -435,7 +452,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "lemma foo [Ring R]\n"
     "    [ZeroLEOneClass R] :\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("True := by" "    True := by")
@@ -446,7 +462,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "theorem foo [Ring R] [PartialOrder R]\n"
     "    [ZeroLEOneClass R] : True :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("by" "  by")
@@ -457,7 +472,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "theorem foo [Ring R] [PartialOrder R]\n"
     "    [ZeroLEOneClass R] : True := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("trivial" "  trivial")
@@ -468,7 +482,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "theorem foo : True := by\n"
     "  calc\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True := by")
    (should (equal (lean4-test--line-string) "    True := by"))))
@@ -479,7 +492,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "theorem foo : True := by\n"
     "  calc\n"
     "    True := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "      exact trivial"))))
@@ -489,7 +501,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have h := fun x ↦\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("True" "    True")
@@ -500,7 +511,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have h_int_term2 : IntervalIntegrable\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "(fun x ↦ True) volume a b := by")
@@ -514,7 +524,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo : Cmd := `[Cli|\n"
     "  FLAGS:\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "output : String")
    (should (equal (lean4-test--line-string) "    output : String"))))
@@ -527,7 +536,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    output : String; \"path\"\n"
     "\n"
     "  ARGS:\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "arg : Nat")
    (should (equal (lean4-test--line-string) "    arg : Nat"))))
@@ -539,7 +547,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    Nat → Nat\n"
     "    := by\n"
     "  intro n\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact n")
    (should (equal (lean4-test--line-string) "  exact n"))))
@@ -554,7 +561,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (a : FreeAlgebra R X) : motive a := by\n"
     "  let s : Subalgebra R (FreeAlgebra R X) :=\n"
     "    { carrier := motive\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("mul_mem' := mul _ _" "      mul_mem' := mul _ _")
@@ -578,7 +584,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  let s : Subalgebra R (FreeAlgebra R X) := { carrier := motive\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "mul_mem' := mul _ _")
    (should (equal (lean4-test--line-string) "    mul_mem' := mul _ _"))))
@@ -589,7 +594,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  let s : Subalgebra R (FreeAlgebra R X) :=\n"
     "    { carrier := motive\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (search-forward "motive")
    (newline)
@@ -602,11 +606,8 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    simp [of, Subtype.coind]\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
-   (lean4-test--open-line-below)
-   (funcall #'lean4-indent-line-function)
-   (should (equal (lean4-test--line-string) "    "))))
+   (lean4-test--newline-and-assert "    ")))
 
 (ert-deftest lean4-indent--freealgebra-fun-classical-newlines ()
   (lean4-test-with-indent-buffer
@@ -615,7 +616,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  fun x y hoxy ↦\n"
     "  by_contradiction <| by\n"
     "    classical exact fun hxy : x ≠ y ↦\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (goto-char (point-min))
    (search-forward "fun x y hoxy ↦")
@@ -633,7 +633,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "theorem algebraMap_leftInverse :\n"
     "    Function.LeftInverse algebraMapInv (algebraMap R <| FreeAlgebra R X) := fun x ↦ by\n"
     "  simp [algebraMapInv]\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (search-forward "by")
    (newline)
@@ -644,7 +643,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "theorem lemma_aachIBP_parts (σ : ℝ) (φ : ℝ → ℝ) (a b : ℝ) (hab : a < b) (ha_pos : 0 < a)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent ": True := by")
    (should (equal (lean4-test--line-string) "    : True := by"))))
@@ -656,7 +654,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    True\n"
     "    ∧ True\n"
     "    := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact ⟨trivial, trivial⟩")
    (should (equal (lean4-test--line-string) "  exact ⟨trivial, trivial⟩"))))
@@ -668,7 +665,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (∏ m ∈ range n, ∏ k ∈ range (m + 1), f k (m - k)) =\n"
     "      ∏ m ∈ range n, ∏ k ∈ range (n - m), f m k := by\n"
     "  rw [prod_sigma', prod_sigma']\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (search-forward "by")
    (newline)
@@ -681,7 +677,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "theorem sum_range_id_mul_two (n : ℕ) : (∑ i ∈ range n, i) * 2 = n * (n - 1) :=\n"
     "  calc\n"
     "    (∑ i ∈ range n, i) * 2 = (∑ i ∈ range n, i) + ∑ i ∈ range n, (n - 1 - i) := by\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (search-forward "by")
    (newline)
@@ -697,7 +692,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "      let x := True\n"
     "      exact x\n"
     "    _ = True := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "      exact trivial"))))
@@ -714,7 +708,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "        exact rfl\n"
     "      exact h\n"
     "    _ = True := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "      exact trivial"))))
@@ -726,7 +719,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (∏ m ∈ range n, ∏ k ∈ range (m + 1), f k (m - k)) =\n"
     "      ∏ m ∈ range n, ∏ k ∈ range (n - m), f m k := by\n"
     "  refine prod_nbij' (fun a ↦ ⟨a.2, a.1 - a.2⟩) (fun a ↦ ⟨a.1 + a.2, a.1⟩) ?_ ?_ ?_ ?_ ?_ <;>\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "simp +contextual only [mem_sigma]")
    (should (equal (lean4-test--line-string) "    simp +contextual only [mem_sigma]"))))
@@ -736,7 +728,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  · calc\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "    exact trivial"))))
@@ -746,7 +737,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  · have h : True := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "    exact trivial"))))
@@ -757,7 +747,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    True = True *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "      True"))))
@@ -773,7 +762,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    (∏ x ∈ s, f x) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "∏ x ∈ s, f x := by")
    (should (equal (lean4-test--line-string) "      ∏ x ∈ s, f x := by"))))
@@ -784,7 +772,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = ((t ^ (-s.re) : ℝ) : ℂ) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "Complex.exp 0 := by")
    (should (equal (lean4-test--line-string) "        Complex.exp 0 := by"))))
@@ -796,7 +783,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  calc\n"
     "        ((t ^ (-s.re) : ℝ) : ℂ) *\n"
     "          (Complex.exp 0) := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 4)
    (funcall #'lean4-indent-line-function)
    (should (equal (lean4-test--line-string) "          (Complex.exp 0) := by"))))
@@ -809,7 +795,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    _ = ((t ^ (-s.re) : ℝ) : ℂ) *\n"
     "        Complex.exp (2 * π * I * (ν * t - (s.im / (2 * π)) * Real.log t)) := by\n"
     "          congr 1\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 4)
    (funcall #'lean4-indent-line-function)
    (should (equal (lean4-test--line-string)
@@ -824,7 +809,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    (∏ x ∈ s, h (if hx : p x then f x hx else g x hx)) =\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "(∏ x ∈ s with p x, h (if hx : p x then f x hx else g x hx)) *")
@@ -836,7 +820,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  withRef binder do\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "match binder with")
    (should (equal (lean4-test--line-string) "    match binder with"))))
@@ -847,7 +830,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  match stx with\n"
     "  | `(($a + $b = $n)) => -- Maybe this is too cute.\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "return processed |>.push (← `(⟨$a, $b⟩), ← `(Finset.Nat.antidiagonal $n))")
@@ -859,7 +841,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  if h : ts.size = 1 then\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "return ts[0]")
    (should (equal (lean4-test--line-string) "    return ts[0]"))))
@@ -871,7 +852,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  if h : ts.size = 1 then\n"
     "    return ts[0]\n"
     "  else\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "processed.foldrM (fun s p => `(SProd.sprod $(s.2) $p)) processed.back.2")
@@ -885,7 +865,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  instance : Module.Free R (FreeAlgebra R X) :=\n"
     "    .of_equiv equivMonoidAlgebraFreeMonoid.symm.toLinearEquiv\n"
     "end\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 3)
    (should (equal (lean4-test--line-string) "end"))))
@@ -896,7 +875,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "mutual\n"
     "  def foo := 1\n"
     "end\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 2)
    (should (equal (lean4-test--line-string) "end"))))
@@ -906,7 +884,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo :=\n"
     "  { field := 1\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "}")
    (should (equal (lean4-test--line-string) "  }"))))
@@ -917,7 +894,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "def foo :=\n"
     "  ⟨\n"
     "    1,\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "⟩")
    (should (equal (lean4-test--line-string) "  ⟩"))))
@@ -927,7 +903,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  exact ⟨\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "⟩")
    (should (equal (lean4-test--line-string) "        ⟩"))))
@@ -938,7 +913,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  exact ⟨\n"
     "    rfl,\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "rfl")
    (should (equal (lean4-test--line-string) "    rfl"))))
@@ -949,7 +923,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "namespace Foo\n"
     "-- comment\n"
     "  open Bar\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 2)
    (should (equal (lean4-test--line-string) "  open Bar"))))
@@ -975,7 +948,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "theorem foo : True := by\n"
     "  exact True\n"
     "where\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 2)
    (should (equal (lean4-test--line-string) "where"))))
@@ -987,7 +959,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (g : ∀ x : ι, ¬p x → M) :\n"
     "    ∏ x ∈ s, (if hx : p x then f x hx else g x hx) =\n"
     "      (∏ x : {x ∈ s | p x}, f x.1 (by simpa using (mem_filter.mp x.2).2)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "∏ x : {x ∈ s | ¬p x}, g x.1 (by simpa using (mem_filter.mp x.2).2) := by")
@@ -1002,7 +973,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    ∏ x ∈ s, (if hx : p x then f x hx else g x hx) =\n"
     "      (∏ x : {x ∈ s | p x}, f x.1 (by simpa using (mem_filter.mp x.2).2)) *\n"
     "        ∏ x : {x ∈ s | ¬p x}, g x.1 (by simpa using (mem_filter.mp x.2).2) := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "simp [prod_apply_dite _ _ fun x => x]")
@@ -1015,7 +985,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = a *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "b := by")
    (should (equal (lean4-test--line-string) "        b := by"))))
@@ -1031,7 +1000,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  calc\n"
     "    (∏ x ∈ s, h (if hx : p x then f x hx else g x hx)) =\n"
     "        (∏ x ∈ s with p x, h (if hx : p x then f x hx else g x hx)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "∏ x ∈ s with ¬p x, h (if hx : p x then f x hx else g x hx) :=")
@@ -1044,7 +1012,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = _ :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "(prod_filter_mul_prod_filter_not s p _).symm")
    (should (equal (lean4-test--line-string)
@@ -1056,7 +1023,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = (∏ x : {x ∈ s | p x}, h (if hx : p x.1 then f x.1 hx else g x.1 hx)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
     (lean4-test--insert-line-below-and-indent
      "∏ x : {x ∈ s | ¬p x}, h (if hx : p x.1 then f x.1 hx else g x.1 hx) :=")
@@ -1069,7 +1035,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = _ :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "congr_arg₂ _ (prod_attach _ _).symm (prod_attach _ _).symm")
    (should (equal (lean4-test--line-string)
@@ -1081,7 +1046,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = (∏ x : {x ∈ s | p x}, h (if hx : p x.1 then f x.1 hx else g x.1 hx)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "∏ x : {x ∈ s | ¬p x}, h (if hx : p x.1 then f x.1 hx else g x.1 hx) :=")
@@ -1094,7 +1058,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = (∏ x : {x ∈ s | p x}, h (f x.1 <| by simpa using (mem_filter.mp x.2).2)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "∏ x : {x ∈ s | ¬p x}, h (g x.1 <| by simpa using (mem_filter.mp x.2).2) :=")
@@ -1107,7 +1070,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    _ = _ :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "congr_arg₂ _ (prod_congr rfl fun x _hx ↦")
    (should (equal (lean4-test--line-string)
@@ -1121,7 +1083,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (∏ x ∈ s, h (if hx : p x then f x hx else g x hx)) =\n"
     "      (∏ x : {x ∈ s | p x}, h (f x.1 <| by simpa using (mem_filter.mp x.2).2)) *\n"
     "        ∏ x : {x ∈ s | ¬p x}, h (g x.1 <| by simpa using (mem_filter.mp x.2).2) :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "calc")
    (should (equal (lean4-test--line-string) "  calc"))))
@@ -1134,7 +1095,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    (∏ x ∈ s, h (if hx : p x then f x hx else g x hx)) =\n"
     "        (∏ x ∈ s with p x, h (if hx : p x then f x hx else g x hx)) *\n"
     "          ∏ x ∈ s with ¬p x, h (if hx : p x then f x hx else g x hx) :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "(prod_filter_mul_prod_filter_not s p _).symm")
    (should (equal (lean4-test--line-string)
@@ -1145,7 +1105,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have h := a *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "b")
    (should (equal (lean4-test--line-string) "    b"))))
@@ -1155,7 +1114,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  simp at *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "exact trivial")
    (should (equal (lean4-test--line-string) "  exact trivial"))))
@@ -1165,7 +1123,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "have h2 (n : ℕ) : cos (b ^ (n + m) * π * x) =\n"
     "      (-1) ^ (⌊b ^ m * x + 2⁻¹⌋) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "cos (b ^ n * (b ^ m * x - ⌊b ^ m * x + 2⁻¹⌋) * π) := by")
@@ -1176,7 +1133,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "        ((t : ℂ) ^ ((-s).re : ℂ)) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "(Complex.exp (((-s).im * I) * Real.log t)) := by")
@@ -1189,7 +1145,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  calc\n"
     "    True = True :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "by")
    (should (equal (lean4-test--line-string) "      by"))))
@@ -1199,7 +1154,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  exact congr_arg₂ _ (foo\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "bar")
    (should (equal (lean4-test--line-string) "    bar"))))
@@ -1209,7 +1163,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "def foo :=\n"
     "  (bar :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "baz")
    (should (equal (lean4-test--line-string) "    baz"))))
@@ -1221,7 +1174,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    2 • (⁅L a, L (a * b)⁆ + ⁅L b, L (b * a)⁆) = ⁅L (a * a), L b⁆ + ⁅L (b * b), L a⁆ := by\n"
     "  suffices 2 • ⁅L a, L (a * b)⁆ + 2 • ⁅L b, L (b * a)⁆ + ⁅L b, L (a * a)⁆ + ⁅L a, L (b * b)⁆ = 0 by\n"
     "    rwa [← sub_eq_zero, ← sub_sub, sub_eq_add_neg, sub_eq_add_neg, lie_skew, lie_skew, nsmul_add]\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent
     "convert (commute_lmul_lmul_sq (a + b)).lie_eq using 1")
@@ -1243,7 +1195,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  have h :=\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("True" "    True")
@@ -1255,7 +1206,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h_lhs :\n"
     "      True =\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("True := by" "      True := by")
@@ -1267,7 +1217,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h_lhs : IntervalIntegrable\n"
     "      (fun x ↦ x /)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("(2 * x) := by" "      (2 * x) := by")
@@ -1279,7 +1228,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "private lemma neg_u'_mul_v_eq (σ : ℝ) (φ : ℝ → ℝ) (x : ℝ) :\n"
     "    let u' : ℝ → ℂ := fun t ↦ ((-σ * t ^ (-σ - 1) : ℝ) : ℂ) /\n"
     "      (2 * π * I * ↑(deriv φ t)) +\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 3)
    (let ((last-command nil))
      (lean4-test--tab-indent))
@@ -1296,7 +1244,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "        (-↑(deriv (deriv φ) t) / (2 * π * I * ↑(deriv φ t) ^ 2));\n"
     "    let v : ℝ → ℂ := fun t ↦ e (φ t);\n"
     "    -(u' x * v x) =\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 7)
    (let ((last-command nil))
      (lean4-test--tab-indent))
@@ -1308,7 +1255,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "private lemma neg_u'_mul_v_eq (σ : ℝ) (φ : ℝ → ℝ) (x : ℝ) :\n"
     "    let u' : ℝ → ℂ := fun t ↦ ((-σ * t ^ (-σ - 1) : ℝ) : ℂ) /\n"
     "      (2 * π * I * ↑(deriv φ t)) +\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 3)
    (lean4-test--insert-line-below-and-indent "((t ^ (-σ) : ℝ) : ℂ) *")
    (should (equal (lean4-test--line-string)
@@ -1321,7 +1267,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    let u' : ℝ → ℂ := fun t ↦ ((-σ * t ^ (-σ - 1) : ℝ) : ℂ) /\n"
     "      (2 * π * I * ↑(deriv φ t)) +\n"
     "      ((t ^ (-σ) : ℝ) : ℂ) *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-line 4)
    (lean4-test--insert-line-below-and-indent
     "(-↑(deriv (deriv φ) t) / (2 * π * I * ↑(deriv φ t) ^ 2));")
@@ -1333,7 +1278,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : Nat := by\n"
     "  let x := a *\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "b")
    (should (equal (lean4-test--line-string) "    b"))))
@@ -1343,7 +1287,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : Nat := by\n"
     "  let x := foo;\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "let y := bar")
    (should (equal (lean4-test--line-string) "  let y := bar"))))
@@ -1354,7 +1297,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    exact True ∧\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -1365,7 +1307,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    exact True ≅\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -1376,7 +1317,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    exact True ≃\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -1387,7 +1327,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    exact True ≅\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -1398,7 +1337,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h : True := by\n"
     "    exact True ≃\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "True")
    (should (equal (lean4-test--line-string) "    True"))))
@@ -1409,7 +1347,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h_lhs : IntervalIntegrable\n"
     "      (fun x ↦ (x /)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("(2 * x)) := by" "        (2 * x)) := by")
@@ -1422,7 +1359,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  exact (\n"
     "    (pre := fun x => x)\n"
     "    (mid := fun x => x)\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "(post := fun x => x))")
    (should (equal (lean4-test--line-string) "    (post := fun x => x))"))))
@@ -1434,7 +1370,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  have h_int_term2 : IntervalIntegrable\n"
     "      (fun x ↦ (x ^ (-σ) : ℝ) * (deriv (deriv φ) x) /\n"
     "        (2 * π * I * (deriv φ x) ^ 2) * e (φ x)) volume a b := by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("exact trivial" "    exact trivial")
@@ -1446,7 +1381,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "example : True := by\n"
     "  have h_int_term2 : IntervalIntegrable\n"
     "      (fun x ↦ ((x ^ (-σ) : ℝ) : ℂ) * ↑(deriv (deriv φ) x) /\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("(2 * π * I * ↑(deriv φ x) ^ 2) * e (φ x)) volume a b := by"
@@ -1461,7 +1395,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  refine\n"
     "    (congr rfl (ext fun x => ?_)).mp\n"
     "      (((h.image_comp_equiv (Equiv.Set.sumCompl (range f))).image_comp_equiv\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("(Equiv.sumCongr (Equiv.ofInjective f f.injective)"
@@ -1478,7 +1411,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    have h := (by\n"
     "      have : HasDerivAt\n"
     "        (fun x ↦ 1 / 2 * log ((1 + x) / (1 - x)) - (∑ i ∈ range n, x ^ (2 * i + 1) / (2 * i + 1)))\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("((y ^ 2) ^ n / (1 - y ^ 2)) y := by"
@@ -1494,7 +1426,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "      [Estimator a ε] [WellFoundedGT (range (bound a : ε → α))] (e : ε) (r : Bool) :\n"
     "      match Estimator.improveUntilAux a p e r with\n"
     "      | .error _ => ¬ p a.get\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("| .ok e' => p (bound a e') := by"
@@ -1509,7 +1440,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  match 0 with\n"
     "  | 0 =>\n"
     "      by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("exact 0" "        exact 0")
@@ -1521,7 +1451,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "structure Foo where\n"
     "  /-- doc -/\n"
     "  x : Nat\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent "y : Nat")
    (should (equal (lean4-test--line-string) "  y : Nat"))))
@@ -1531,7 +1460,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "instance : Inhabited Nat where\n"
     "  default := 0\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-line-below-and-indent " := 1")
    (should (equal (lean4-test--line-string) "  := 1"))))
@@ -1543,7 +1471,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  have h :\n"
     "      True := by\n"
     "    trivial\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("exact trivial" "    exact trivial")
@@ -1553,7 +1480,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "def foo :\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("Nat := by" "    Nat := by")
@@ -1565,7 +1491,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "def foo (n : Nat) : Nat := by\n"
     "  exact n\n"
     "termination_by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("n" "  n")
@@ -1577,7 +1502,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "def foo (n : Nat) : Nat := by\n"
     "  exact n\n"
     "decreasing_by\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("simp" "  simp")
@@ -1589,7 +1513,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "namespace Foo\n"
     "  def bar : Nat := by\n"
     "    trivial\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (forward-line 1)
    (funcall indent-line-function)
@@ -1597,42 +1520,36 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
 
 (ert-deftest lean4-indent--top-level-section-snaps-left ()
   (lean4-test-with-indent-buffer "  section Foo\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "section Foo"))))
 
 (ert-deftest lean4-indent--top-level-public-section-snaps-left ()
   (lean4-test-with-indent-buffer "  public section\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "public section"))))
 
 (ert-deftest lean4-indent--top-level-section-trivial-snaps-left ()
   (lean4-test-with-indent-buffer "  section trivial\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "section trivial"))))
 
 (ert-deftest lean4-indent--top-level-namespace-snaps-left ()
   (lean4-test-with-indent-buffer "  namespace Foo\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "namespace Foo"))))
 
 (ert-deftest lean4-indent--top-level-anchor-compile-inductive ()
   (lean4-test-with-indent-buffer "  compile_inductive Foo\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "compile_inductive Foo"))))
 
 (ert-deftest lean4-indent--top-level-anchor-partial-fixpoint ()
   (lean4-test-with-indent-buffer "  partial_fixpoint Foo\n"
-                                 (setq lean4-indent-offset 2)
                                  (goto-char (point-min))
                                  (funcall indent-line-function)
                                  (should (equal (lean4-test--line-string) "partial_fixpoint Foo"))))
@@ -1643,7 +1560,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  open Foo\n"
     "  universe u\n"
     "  attribute [simp] Foo.bar\n")
-   (setq lean4-indent-offset 2)
    (goto-char (point-min))
    (funcall indent-line-function)
    (should (equal (lean4-test--line-string) "open Foo"))
@@ -1659,7 +1575,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : 37 = 37 ∧ 73 = 73 := by\n"
     "  sorry -- comment\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("#check 37" "#check 37")
@@ -1667,7 +1582,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
 
 (ert-deftest lean4-indent--dedents-after-double-indented-type ()
   (lean4-test-with-indent-buffer "example :\n"
-                                 (setq lean4-indent-offset 2)
                                  (lean4-test--goto-eob)
                                  (lean4-test--insert-line-below-and-indent "2 = 2 :=")
                                  (lean4-test--insert-lines-and-assert
@@ -1688,7 +1602,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "  /-\n"
     "  comment\n"
     "  -/\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("exact rfl" "  exact rfl")
@@ -1698,7 +1611,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "mutual\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("def foo : Nat := by" "  def foo : Nat := by")
@@ -1709,7 +1621,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
    (concat
     "example : True := by\n"
     "  simp [with]\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("| exact trivial" "  | exact trivial")
@@ -1724,7 +1635,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "    match y with\n"
     "    | b =>\n"
     "      rfl\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("| c =>" "  | c =>")
@@ -1736,7 +1646,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     "if h then\n"
     "  trivial\n"
     "else if h2 then\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("trivial" "  trivial")
@@ -1746,7 +1655,6 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer
    (concat
     "inductive Foo where\n")
-   (setq lean4-indent-offset 2)
    (lean4-test--goto-eob)
    (lean4-test--insert-lines-and-assert
     '(("| bar" "  | bar")

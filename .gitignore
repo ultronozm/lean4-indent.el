@@ -1,0 +1,4 @@
+/.agent-shell/
+*.elc
+.#*
+.git.bak/

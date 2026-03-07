@@ -589,22 +589,23 @@ current line."
 
 (defun lean4-indent--colon-before-paren-p (pos)
   "Return non-nil if a ':' appears before any '(' on the line at POS, ignoring strings/comments."
-  (save-excursion
-    (goto-char pos)
-    (let ((found-colon nil)
-          (found-paren nil)
-          (end (line-end-position)))
-      (while (and (< (point) end) (not found-paren))
-        (let* ((ppss (syntax-ppss (point)))
-               (in-str (nth 3 ppss))
-               (in-com (nth 4 ppss))
-               (ch (char-after)))
-          (unless (or in-str in-com)
-            (cond
-             ((eq ch ?:) (setq found-colon t))
-             ((eq ch ?\() (setq found-paren t)))))
-        (forward-char 1))
-      (and found-colon (not found-paren)))))
+  (when pos
+    (save-excursion
+      (goto-char pos)
+      (let ((found-colon nil)
+            (found-paren nil)
+            (end (line-end-position)))
+        (while (and (< (point) end) (not found-paren))
+          (let* ((ppss (syntax-ppss (point)))
+                 (in-str (nth 3 ppss))
+                 (in-com (nth 4 ppss))
+                 (ch (char-after)))
+            (unless (or in-str in-com)
+              (cond
+               ((eq ch ?:) (setq found-colon t))
+               ((eq ch ?\() (setq found-paren t)))))
+          (forward-char 1))
+        (and found-colon (not found-paren))))))
 
 (defun lean4-indent--prev-paren-block-min-indent (start-pos)
   "Return minimum indent of consecutive previous lines starting with '('.
