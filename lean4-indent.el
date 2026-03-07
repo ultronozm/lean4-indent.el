@@ -126,7 +126,7 @@ current line."
 (defconst lean4-indent--re-blank "\\`[ \t]*\\'")
 (defconst lean4-indent--re-label-colon "^[ \t]*[A-Z][A-Z0-9_]*:[ \t]*$")
 (defconst lean4-indent--re-macro-rules "^[ \t]*\\(?:scoped[ \t]+\\)?macro_rules\\_>")
-(defconst lean4-indent--re-starts-paren "[({\\[]")
+(defconst lean4-indent--re-starts-paren "\\(?:[(]\\|{\\|\\[\\)")
 (defconst lean4-indent--re-starts-branch "|\\(?:[^>|]\\|$\\)")
 (defconst lean4-indent--re-starts-focus "·")
 (defconst lean4-indent--re-starts-namespace "namespace\\_>")
@@ -523,6 +523,29 @@ current line."
          (not (string-match-p (concat "\\`" lean4-indent--re-starts-where) trim))
          (not (string-match-p (concat "\\`" lean4-indent--re-starts-end) trim)))))
 
+(defun lean4-indent--plain-application-head-line-p (text)
+  "Return non-nil if TEXT is a plain term application head."
+  (let ((trim (string-trim text)))
+    (and (string-match-p "\\`[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
+         (not (string-match-p (concat "\\`" lean4-indent--re-starts-decl) trim))
+         (not (string-match-p "\\`\\_<\\(?:fun\\|let\\|calc\\|where\\|end\\|if\\|match\\|do\\|have\\|suffices\\)\\_>" trim))
+         (not (lean4-indent--line-ends-with-colon-p trim))
+         (not (lean4-indent--line-ends-with-coloneq-p trim))
+         (not (lean4-indent--line-ends-with-coloneq-by-p trim))
+         (not (lean4-indent--line-ends-with-by-p trim))
+         (not (lean4-indent--line-ends-with-fat-arrow-p trim))
+         (not (lean4-indent--line-ends-with-fun-arrow-p trim))
+         (not (lean4-indent--line-ends-with-do-p trim))
+         (not (lean4-indent--line-ends-with-then-p trim))
+         (not (lean4-indent--line-ends-with-else-p trim))
+         (not (lean4-indent--line-ends-with-calc-p trim))
+         (not (lean4-indent--line-ends-with-equals-p trim))
+         (not (lean4-indent--line-ends-with-comma-p trim))
+         (not (lean4-indent--line-ends-with-term-continuation-p trim))
+         (not (lean4-indent--line-starts-with-branch-p trim))
+         (not (lean4-indent--line-starts-with-focus-p trim))
+         (not (lean4-indent--line-starts-with-closing-p trim)))))
+
 (defun lean4-indent--term-body-intro-indent (pos text indent step)
   "Return indent of the first line in the term body introduced by TEXT.
 POS is the position of the line containing TEXT, at indentation INDENT."
@@ -552,7 +575,8 @@ POS is the position of the line containing TEXT, at indentation INDENT."
         (string-match-p "\\`show\\_>" trim)
         (string-match-p "\\`calc\\_>" trim)
         (string-match-p "\\`do\\_>" trim)
-        (string-match-p "\\`[({\\[⟨]" trim))))
+        (lean4-indent--line-starts-with-paren-p trim)
+        (string-match-p "\\`⟨" trim))))
 
 (defun lean4-indent--line-leading-angle-paren-col (text)
   "Return the column of the leading '(' in a line starting with `⟨(`, or nil."
@@ -1169,7 +1193,8 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
      ;; 7.5) Continue a simple head term when an enclosing anchor already expects one term.
      ((and anchor-term-body-indent
            (= prev-indent anchor-term-body-indent)
-           (lean4-indent--simple-term-head-line-p prev-text-no-comment)
+           (or (lean4-indent--simple-term-head-line-p prev-text-no-comment)
+               (lean4-indent--plain-application-head-line-p prev-text-no-comment))
            (lean4-indent--term-continuation-line-p current-text))
       (+ prev-indent step))
      ;; 8) Anonymous literal ⟨…⟩

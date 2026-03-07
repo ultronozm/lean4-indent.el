@@ -1635,5 +1635,11 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
 
 theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) :=")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--list-rec-on-lambda-line
+ "theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) :=
+  List.recOn l
+    (fun H : x ∈ [] ↦ False.elim ((mem_nil_iff _).mp H))")
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here
