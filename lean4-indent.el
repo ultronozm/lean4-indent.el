@@ -20,6 +20,9 @@
 
 ;;; Commentary:
 ;; This package provides Lean 4 indentation commands for `lean4-mode'.
+;; It is experimental and intended primarily for my personal use.
+;; Much of the current implementation was developed with Codex against
+;; a growing test suite.  Expect rough edges.
 ;;
 ;; To use it, set `indent-line-function' buffer-locally in a `lean4-mode-hook':
 ;;
