@@ -118,6 +118,65 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (should-not (lean4-indent--operator-continuation-p "  foo := by"))
   (should-not (lean4-indent--operator-continuation-p "  foo :=")))
 
+(ert-deftest lean4-indent--predicate-body-intro-kind ()
+  (should (eq (lean4-indent--line-body-intro-kind "foo :") 'colon))
+  (should (eq (lean4-indent--line-body-intro-kind "foo := by") 'coloneq-by))
+  (should (eq (lean4-indent--line-body-intro-kind "foo :=") 'coloneq))
+  (should (eq (lean4-indent--line-body-intro-kind "by") 'by))
+  (should (eq (lean4-indent--line-body-intro-kind "fun x ↦") 'fun-arrow))
+  (should (eq (lean4-indent--line-body-intro-kind "have") 'bare-have-suffices))
+  (should (eq (lean4-indent--line-body-intro-kind "suffices") 'bare-have-suffices))
+  (should (eq (lean4-indent--line-body-intro-kind "termination_by") 'termination))
+  (should-not (lean4-indent--line-body-intro-kind "List.recOn l")))
+
+(ert-deftest lean4-indent--predicate-body-intro-precedence ()
+  (should (lean4-indent--line-ends-with-colon-p "foo :"))
+  (should-not (lean4-indent--line-ends-with-colon-p "foo :="))
+  (should-not (lean4-indent--line-ends-with-colon-p "foo := by"))
+  (should (lean4-indent--line-ends-with-coloneq-p "foo :="))
+  (should-not (lean4-indent--line-ends-with-coloneq-p "foo := by"))
+  (should (lean4-indent--line-ends-with-coloneq-by-p "foo := by")))
+
+(ert-deftest lean4-indent--predicate-outer-coloneq ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : Nat := 2\n"
+       "theorem foo (x : Nat) : Nat := x\n"
+       "theorem bar (x : Nat)\n")
+    (goto-char (point-min))
+    (should (lean4-indent--line-has-outer-coloneq-p (point)))
+    (forward-line 1)
+    (should (lean4-indent--line-has-outer-coloneq-p (point)))
+    (forward-line 1)
+    (should-not (lean4-indent--line-has-outer-coloneq-p (point)))))
+
+(ert-deftest lean4-indent--predicate-application-head-kind ()
+  (should (eq (lean4-indent--line-application-head-kind "Iff.intro") 'atom))
+  (should (eq (lean4-indent--line-application-head-kind "List.recOn l") 'application))
+  (should-not (lean4-indent--line-application-head-kind "if"))
+  (should-not (lean4-indent--line-application-head-kind "match"))
+  (should-not (lean4-indent--line-application-head-kind "have"))
+  (should-not (lean4-indent--line-application-head-kind "suffices")))
+
+(ert-deftest lean4-indent--predicate-structured-term-start ()
+  (should (lean4-indent--line-starts-structured-term-p "if"))
+  (should (lean4-indent--line-starts-structured-term-p "match"))
+  (should (lean4-indent--line-starts-structured-term-p "have"))
+  (should (lean4-indent--line-starts-structured-term-p "(fun x => x)"))
+  (should-not (lean4-indent--line-starts-structured-term-p "Iff.intro")))
+
+(lean4-define-final-line-indent-test
+ lean4-indent--bare-have-line-indents-continuation
+ "example : True := by
+  have
+    foo := bar")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--bare-suffices-line-indents-continuation
+ "example : True := by
+  suffices
+    foo := bar")
+
 (ert-deftest lean4-indent--indent-region-first-line-does-not-error ()
   (lean4-test-with-indent-buffer
       "example : True := by\n"
@@ -637,6 +696,11 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (newline)
     (funcall #'lean4-indent-line-function)
     (should (equal (lean4-test--line-string) "      "))))
+
+(lean4-define-final-line-indent-test
+ lean4-indent--calc-absolute-value-step-coloneq-by-line
+ "  calc
+    |s n| = |s n - a + a| := by simp")
 
 (ert-deftest lean4-indent--calc-next-step-by-ignores-nested-coloneq-in-prior-proof ()
   (lean4-test-with-indent-buffer
@@ -1517,6 +1581,30 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
      '(("#check 37" "#check 37")
        ("#check 73" "#check 73")))))
 
+(ert-deftest lean4-indent--newline-after-top-level-proof-dedents ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  trivial\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "")))
+
+(ert-deftest lean4-indent--newline-after-top-level-check-dedents ()
+  (lean4-test-with-indent-buffer "#check 37\n"
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "")))
+
+(ert-deftest lean4-indent--newline-after-single-line-top-level-decl-dedents ()
+  (lean4-test-with-indent-buffer "example : Nat := 2\n"
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "")))
+
+(lean4-define-final-line-indent-test
+ lean4-indent--top-level-check-after-single-line-top-level-decl
+ "example : Nat := 2
+
+#check Nat.recOn")
+
 (ert-deftest lean4-indent--dedents-after-double-indented-type ()
   (lean4-test-with-indent-buffer "example :\n"
     (lean4-test--goto-eob)
@@ -1619,6 +1707,13 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
       ⟨(fun hp: p => (hnpq (Or.inl hp))),
        (fun hq: q => (hnpq (Or.inr hq)))⟩)
     (fun hnpnq: _ =>")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--iff-intro-inner-hpq-line
+ "    (fun hnpnq: _ =>
+      have hnp := hnpnq.left
+      have hnq := hnpnq.right
+      (fun hpq: p ∨ q =>")
 
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-theorem-after-iff-intro-example

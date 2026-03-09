@@ -45,7 +45,6 @@
 ;;; Code:
 
 (require 'subr-x)
-(require 'seq)
 
 ;;;; Shift commands
 
@@ -127,7 +126,7 @@ current line."
 (defconst lean4-indent--re-label-colon "^[ \t]*[A-Z][A-Z0-9_]*:[ \t]*$")
 (defconst lean4-indent--re-macro-rules "^[ \t]*\\(?:scoped[ \t]+\\)?macro_rules\\_>")
 (defconst lean4-indent--re-starts-paren "\\(?:[(]\\|{\\|\\[\\)")
-(defconst lean4-indent--re-starts-branch "|\\(?:[^>|]\\|$\\)")
+(defconst lean4-indent--re-starts-branch "|\\(?:\\s-\\|$\\)")
 (defconst lean4-indent--re-starts-focus "·")
 (defconst lean4-indent--re-starts-namespace "namespace\\_>")
 (defconst lean4-indent--re-starts-section "section\\_>")
@@ -135,13 +134,10 @@ current line."
 (defconst lean4-indent--re-starts-mutual "mutual\\_>")
 (defconst lean4-indent--re-starts-end "\\_<end\\_>")
 (defconst lean4-indent--re-starts-where "\\_<where\\_>")
-(defconst lean4-indent--re-starts-fun "\\_<fun\\_>")
 (defconst lean4-indent--re-starts-let "\\_<let\\_>")
 (defconst lean4-indent--re-starts-calc "\\_<calc\\_>")
 (defconst lean4-indent--re-classical-exact-fun
   "\\_<classical\\_>\\s-+\\_<exact\\_>\\s-+\\_<fun\\_>")
-(defconst lean4-indent--re-starts-decl
-  "\\_<\\(theorem\\|lemma\\|example\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|set_option\\|open\\|universe\\)\\_>")
 (defconst lean4-indent--calc-relops
   '("=" "≤" "<" "≥" ">" "≠" "≃" "≅" "≈" "≡" "↔")
   "Relation operators that can start a calc step.")
@@ -184,7 +180,6 @@ current line."
 
 (defconst lean4-indent--char-right-angle (string-to-char "⟩")
   "Lean angle-bracket close character as a codepoint.")
-(defconst lean4-indent--re-angle-brackets "[⟨⟩]")
 (defconst lean4-indent--re-fun-by
   ":=\\s-*\\_<fun\\_>.*↦\\s-*\\_<by\\_>\\s-*$")
 
@@ -223,14 +218,6 @@ current line."
     (goto-char pos)
     (current-indentation)))
 
-(defun lean4-indent--trim-left (text)
-  "Trim leading whitespace from TEXT."
-  (string-trim-left text))
-
-(defun lean4-indent--trim-right (text)
-  "Trim trailing whitespace from TEXT."
-  (string-trim-right text))
-
 (defun lean4-indent--prev-nonblank ()
   "Return position of previous nonblank line or nil."
   (save-excursion
@@ -241,18 +228,6 @@ current line."
           (unless (lean4-indent--line-blank-p text)
             (setq found (point)))))
       found)))
-
-(defun lean4-indent--inside-comment-p (pos)
-  "Return non-nil if POS is inside a comment."
-  (save-excursion
-    (goto-char pos)
-    (nth 4 (syntax-ppss))))
-
-(defun lean4-indent--inside-string-p (pos)
-  "Return non-nil if POS is inside a string."
-  (save-excursion
-    (goto-char pos)
-    (nth 3 (syntax-ppss))))
 
 ;;; Paren helpers
 (defun lean4-indent--open-paren-pos (&optional pos)
@@ -271,16 +246,6 @@ current line."
       (save-excursion
         (goto-char open)
         (current-column)))))
-
-(defun lean4-indent--open-paren-char (&optional pos)
-  "Return character of innermost open paren for line at POS, or nil."
-  (save-excursion
-    (goto-char (or pos (point)))
-    (back-to-indentation)
-    (let* ((ppss (syntax-ppss))
-           (open (nth 1 ppss)))
-      (when open
-        (char-after open)))))
 
 (defun lean4-indent--line-closes-paren-p (pos)
   "Return non-nil if the line at POS closes any paren/bracket/brace."
@@ -426,30 +391,9 @@ current line."
             (when (and (< indent limit-indent)
                        (string-match-p lean4-indent--re-have-suffices text))
               (throw 'found t))
-            (when (string-match-p lean4-indent--re-starts-decl text)
+            (when (lean4-indent--line-top-level-anchor-p text)
               (throw 'found nil)))))
       nil)))
-
-(defun lean4-indent--calc-rhs-start-col (pos)
-  "Return column of first non-space after '=' on the line at POS, or nil."
-  (save-excursion
-    (goto-char pos)
-    (let ((eol (line-end-position))
-          (bol (line-beginning-position))
-          (col nil))
-      (while (and (not col) (search-forward "=" eol t))
-        (let* ((eq-pos (point))
-               (ppss (syntax-ppss (1- eq-pos)))
-               (prev (char-before (1- eq-pos)))
-               (next (char-after eq-pos)))
-          (goto-char eq-pos)
-          (when (and (not (nth 3 ppss)) (not (nth 4 ppss))
-                     (not (memq prev '(?: ?< ?>)))
-                     (not (memq next '(?= ?> ?<))))
-            (skip-chars-forward " \t" eol)
-            (setq col (string-width
-                       (buffer-substring-no-properties bol (point)))))))
-      col)))
 
 (defun lean4-indent--line-starts-with-calc-step-p (text)
   (string-match-p (concat "\\`" lean4-indent--re-starts-calc-step) text))
@@ -470,46 +414,44 @@ current line."
 (defun lean4-indent--line-ends-with-comma-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-comma))
 
+(defun lean4-indent--line-body-intro-kind (text)
+  "Classify how TEXT introduces a following indented body.
+
+Return a symbol such as `colon', `coloneq', `by', or
+`bare-have-suffices', or nil if TEXT does not introduce a body."
+  (cond
+   ((lean4-indent--line-ends-with-colon-p text) 'colon)
+   ((lean4-indent--line-ends-with-coloneq-by-p text) 'coloneq-by)
+   ((lean4-indent--line-ends-with-coloneq-p text) 'coloneq)
+   ((lean4-indent--line-ends-with-by-p text) 'by)
+   ((lean4-indent--line-ends-with-fat-arrow-p text) 'fat-arrow)
+   ((lean4-indent--line-ends-with-fun-arrow-p text) 'fun-arrow)
+   ((lean4-indent--line-ends-with-do-p text) 'do)
+   ((lean4-indent--line-ends-with-then-p text) 'then)
+   ((lean4-indent--line-ends-with-else-p text) 'else)
+   ((lean4-indent--line-ends-with-calc-p text) 'calc)
+   ((lean4-indent--line-ends-with-equals-p text) 'equals)
+   ((lean4-indent--line-ends-with-where-p text) 'where)
+   ((string-match-p lean4-indent--re-ends-termination text) 'termination)
+   ((string-match-p lean4-indent--re-ends-decreasing text) 'decreasing)
+   ((string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\)\\_>\\s-*\\'" text)
+    'bare-have-suffices)
+   ((lean4-indent--ends-with-p text "{") 'open-brace)
+   (t nil)))
+
 (defun lean4-indent--line-ends-with-op-p (text)
-  (string-match-p lean4-indent--ops-regexp (lean4-indent--trim-right text)))
+  (string-match-p lean4-indent--ops-regexp (string-trim-right text)))
 
 (defun lean4-indent--operator-continuation-p (text)
   "Return non-nil if TEXT ends with an operator and does not trigger other indent rules."
   (and (lean4-indent--line-ends-with-op-p text)
-       (not (lean4-indent--line-ends-with-colon-p text))
-       (not (lean4-indent--line-ends-with-coloneq-p text))
-       (not (lean4-indent--line-ends-with-coloneq-by-p text))
-       (not (lean4-indent--line-ends-with-by-p text))
-       (not (lean4-indent--line-ends-with-fat-arrow-p text))
-       (not (lean4-indent--line-ends-with-fun-arrow-p text))
-       (not (lean4-indent--line-ends-with-calc-p text))
-       (not (lean4-indent--line-ends-with-where-p text))
-       (not (lean4-indent--line-ends-with-equals-p text))))
-
-(defun lean4-indent--line-label-colon-p (text)
-  (let ((case-fold-search nil))
-    (string-match-p lean4-indent--re-label-colon text)))
-
-(defun lean4-indent--line-macro-rules-p (text)
-  (string-match-p lean4-indent--re-macro-rules text))
+       (not (lean4-indent--line-body-intro-kind text))))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
   (string-match-p lean4-indent--top-level-anchors-re text))
 
 (defun lean4-indent--line-starts-with-paren-p (text)
   (lean4-indent--starts-with-p text lean4-indent--re-starts-paren))
-
-(defun lean4-indent--line-starts-with-branch-p (text)
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-branch))
-
-(defun lean4-indent--line-starts-with-focus-p (text)
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-focus))
-
-(defun lean4-indent--line-starts-with-where-p (text)
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-where))
-
-(defun lean4-indent--line-starts-with-let-p (text)
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-let))
 
 (defun lean4-indent--line-starts-with-fun-form-p (text)
   "Return non-nil if TEXT starts with a `fun` form, possibly after `(`.
@@ -519,60 +461,45 @@ This also treats `classical exact fun` as a fun form."
    "\\`[ \t]*\\(?:([ \t]*\\)*\\(?:\\_<classical\\_>\\s-+\\_<exact\\_>\\s-+\\)?\\_<fun\\_>"
    text))
 
-(defun lean4-indent--simple-term-head-line-p (text)
-  "Return non-nil if TEXT is a single identifier-like term head."
-  (let ((trim (string-trim text)))
-    (and (string-match-p "\\`[[:word:]_.']+\\'" trim)
+(defun lean4-indent--line-application-head-kind (text)
+  "Classify TEXT when it is a plain term head that may take later arguments.
+
+Return `atom' for a single identifier-like head, `application' for an
+unparenthesized application head, or nil otherwise."
+  (let* ((trim (string-trim text))
+         (body-intro-kind (lean4-indent--line-body-intro-kind trim)))
+    (and (not body-intro-kind)
          (not (string-match-p lean4-indent--top-level-anchors-re trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-decl) trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-fun) trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-let) trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-calc) trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-where) trim))
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-end) trim)))))
+         (not (string-match-p
+               "\\`\\_<\\(?:fun\\|let\\|calc\\|where\\|end\\|if\\|match\\|do\\|have\\|suffices\\)\\_>"
+               trim))
+         (not (lean4-indent--branch-line-p trim))
+         (not (lean4-indent--focus-dot-line-p trim))
+         (not (lean4-indent--line-starts-with-closing-p trim))
+         (cond
+          ((string-match-p "\\`[[:word:]_.']+\\'" trim)
+           'atom)
+          ((and (string-match-p "\\`[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
+                (not (lean4-indent--line-ends-with-comma-p trim))
+                (not (lean4-indent--line-ends-with-term-continuation-p trim)))
+           'application)
+          (t nil)))))
 
-(defun lean4-indent--plain-application-head-line-p (text)
-  "Return non-nil if TEXT is a plain term application head."
-  (let ((trim (string-trim text)))
-    (and (string-match-p "\\`[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
-         (not (string-match-p (concat "\\`" lean4-indent--re-starts-decl) trim))
-         (not (string-match-p "\\`\\_<\\(?:fun\\|let\\|calc\\|where\\|end\\|if\\|match\\|do\\|have\\|suffices\\)\\_>" trim))
-         (not (lean4-indent--line-ends-with-colon-p trim))
-         (not (lean4-indent--line-ends-with-coloneq-p trim))
-         (not (lean4-indent--line-ends-with-coloneq-by-p trim))
-         (not (lean4-indent--line-ends-with-by-p trim))
-         (not (lean4-indent--line-ends-with-fat-arrow-p trim))
-         (not (lean4-indent--line-ends-with-fun-arrow-p trim))
-         (not (lean4-indent--line-ends-with-do-p trim))
-         (not (lean4-indent--line-ends-with-then-p trim))
-         (not (lean4-indent--line-ends-with-else-p trim))
-         (not (lean4-indent--line-ends-with-calc-p trim))
-         (not (lean4-indent--line-ends-with-equals-p trim))
-         (not (lean4-indent--line-ends-with-comma-p trim))
-         (not (lean4-indent--line-ends-with-term-continuation-p trim))
-         (not (lean4-indent--line-starts-with-branch-p trim))
-         (not (lean4-indent--line-starts-with-focus-p trim))
-         (not (lean4-indent--line-starts-with-closing-p trim)))))
+(defun lean4-indent--body-intro-indent (kind pos indent step)
+  "Return indent of the first body line introduced by KIND.
+POS is the position of the line introducing the body, at indentation
+INDENT."
+  (pcase kind
+    ('coloneq (+ indent step))
+    ((or 'fat-arrow 'fun-arrow 'then 'else) (+ indent step))
+    ('equals
+     (if (and pos (lean4-indent--in-calc-block-p pos))
+         (+ indent (* 2 step))
+       (+ indent step)))
+    (_ nil)))
 
-(defun lean4-indent--term-body-intro-indent (pos text indent step)
-  "Return indent of the first line in the term body introduced by TEXT.
-POS is the position of the line containing TEXT, at indentation INDENT."
-  (cond
-   ((lean4-indent--line-ends-with-coloneq-p text)
-    (+ indent step))
-   ((or (lean4-indent--line-ends-with-fat-arrow-p text)
-        (lean4-indent--line-ends-with-fun-arrow-p text)
-        (lean4-indent--line-ends-with-then-p text)
-        (lean4-indent--line-ends-with-else-p text))
-    (+ indent step))
-   ((lean4-indent--line-ends-with-equals-p text)
-    (if (and pos (lean4-indent--in-calc-block-p pos))
-        (+ indent (* 2 step))
-      (+ indent step)))
-   (t nil)))
-
-(defun lean4-indent--term-continuation-line-p (text)
-  "Return non-nil if TEXT starts a structured continuation of a term."
+(defun lean4-indent--line-starts-structured-term-p (text)
+  "Return non-nil if TEXT can begin the next structured piece of a term."
   (let ((trim (string-trim-left text)))
     (or (string-match-p "\\`fun\\_>" trim)
         (string-match-p "\\`by\\_>" trim)
@@ -593,27 +520,20 @@ POS is the position of the line containing TEXT, at indentation INDENT."
 
 (defun lean4-indent--branch-line-p (text)
   "Return non-nil if TEXT is a branch line."
-  (lean4-indent--line-starts-with-branch-p text))
+  (lean4-indent--starts-with-p text lean4-indent--re-starts-branch))
 
 (defun lean4-indent--focus-dot-line-p (text)
   "Return non-nil if TEXT starts with a focus dot."
-  (lean4-indent--line-starts-with-focus-p text))
+  (lean4-indent--starts-with-p text lean4-indent--re-starts-focus))
 
 (defun lean4-indent--macro-rules-line-p (text)
   "Return non-nil if TEXT is a macro_rules line."
-  (lean4-indent--line-macro-rules-p text))
+  (string-match-p lean4-indent--re-macro-rules text))
 
 (defun lean4-indent--label-colon-line-p (text)
   "Return non-nil if TEXT is an all-caps label ending in a colon."
-  (lean4-indent--line-label-colon-p text))
-
-(defun lean4-indent--line-starts-with-simp-like-p (text)
-  "Return non-nil if TEXT starts with a simp-like tactic keyword."
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-simp-like))
-
-(defun lean4-indent--line-starts-with-exact-p (text)
-  "Return non-nil if TEXT starts with exact."
-  (lean4-indent--starts-with-p text lean4-indent--re-starts-exact))
+  (let ((case-fold-search nil))
+    (string-match-p lean4-indent--re-label-colon text)))
 
 (defun lean4-indent--line-is-bare-sorry-p (text)
   (let ((trim (string-trim text)))
@@ -686,54 +606,102 @@ POS is the position of the line containing TEXT, at indentation INDENT."
                  (ch (char-after)))
             (unless (or in-str in-com)
               (cond
-               ((eq ch ?:) (setq found-colon t))
+               ((and (eq ch ?:)
+                     (not (eq (char-after (1+ (point))) ?=))
+                     (not (eq (char-after (1+ (point))) ?:))
+                     (not (eq (char-before (point)) ?:)))
+                (setq found-colon t))
                ((eq ch ?\() (setq found-paren t)))))
           (forward-char 1))
         (and found-colon (not found-paren))))))
 
-(defun lean4-indent--prev-paren-block-min-indent (start-pos)
-  "Return minimum indent of consecutive previous lines starting with '('.
-Stops at the first nonblank line that does not start with a paren."
+(defun lean4-indent--line-has-outer-coloneq-p (pos)
+  "Return non-nil if line at POS contains a `:=` at delimiter depth 0."
+  (when pos
+    (save-excursion
+      (goto-char pos)
+      (let ((found nil)
+            (end (line-end-position)))
+        (while (and (< (point) end) (not found))
+          (let* ((ppss (syntax-ppss (point)))
+                 (depth (car ppss))
+                 (in-str (nth 3 ppss))
+                 (in-com (nth 4 ppss)))
+            (when (and (= depth 0)
+                       (not in-str)
+                       (not in-com)
+                       (eq (char-after) ?:)
+                       (eq (char-after (1+ (point))) ?=))
+              (setq found t)))
+          (forward-char 1))
+        found))))
+
+(defun lean4-indent--scan-prev-paren-lines (start-pos prev-indent dedent-indent)
+  "Scan backward from START-POS for earlier paren-led lines.
+
+PREV-INDENT is the indentation of the immediately previous nonblank line.
+DEDENT-INDENT is the target upper bound used for `_)`-style dedents.
+
+Return a plist with:
+
+- `:block-min-indent' for the consecutive preceding paren-led block,
+- `:sibling-indent' for the nearest earlier paren-led line indented less than
+  PREV-INDENT,
+- `:dedent-indent' for the nearest earlier paren-led line indented at or below
+  DEDENT-INDENT."
   (save-excursion
     (goto-char start-pos)
-    (let ((min-indent nil)
-          (done nil))
-      (while (and (not done) (not (bobp)))
+    (let ((block-min-indent nil)
+          (sibling-indent nil)
+          (found-dedent-indent nil)
+          (in-leading-block t))
+      (while (and (not (bobp))
+                  (or in-leading-block
+                      (not sibling-indent)
+                      (not found-dedent-indent)))
         (forward-line -1)
         (let ((text (lean4-indent--line-text (point))))
           (cond
            ((lean4-indent--line-blank-p text) nil)
            ((lean4-indent--line-starts-with-paren-p text)
             (let ((indent (lean4-indent--line-indent (point))))
-              (setq min-indent (if min-indent (min min-indent indent) indent))))
-           (t (setq done t)))))
-      min-indent)))
+              (when in-leading-block
+                (setq block-min-indent
+                      (if block-min-indent
+                          (min block-min-indent indent)
+                        indent)))
+              (when (and (not sibling-indent)
+                         (< indent prev-indent))
+                (setq sibling-indent indent))
+              (when (and (not found-dedent-indent)
+                         (<= indent dedent-indent))
+                (setq found-dedent-indent indent))))
+           (t
+            (setq in-leading-block nil)))))
+      (list :block-min-indent block-min-indent
+            :sibling-indent sibling-indent
+            :dedent-indent found-dedent-indent))))
 
-(defun lean4-indent--find-prev-paren-dedent (start-pos max-indent)
-  "Find the nearest previous line starting with '(' at or below MAX-INDENT."
-  (save-excursion
-    (goto-char start-pos)
-    (let ((found nil))
-      (while (and (not found) (not (bobp)))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point))))
-          (when (and (lean4-indent--line-starts-with-paren-p text)
-                     (<= (lean4-indent--line-indent (point)) max-indent))
-            (setq found (lean4-indent--line-indent (point))))))
-      found)))
+(defun lean4-indent--open-delimited-body-indent (open-paren-pos open-paren-col step)
+  "Return body indentation inside a delimited term.
 
-(defun lean4-indent--find-prev-paren-start-indent (start-pos prev-indent)
-  "Find indent of the nearest preceding paren-led line less indented than PREV-INDENT."
-  (save-excursion
-    (goto-char start-pos)
-    (catch 'found
-      (while (not (bobp))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point))))
-          (when (and (lean4-indent--line-starts-with-paren-p text)
-                     (< (lean4-indent--line-indent (point)) prev-indent))
-            (throw 'found (lean4-indent--line-indent (point))))))
-      nil)))
+OPEN-PAREN-POS and OPEN-PAREN-COL describe the opener, and STEP is the current
+indentation step.  If the opener shares its line with earlier text, indent from
+the line; otherwise indent from the delimiter column."
+  (let* ((open-line-indent (and open-paren-pos
+                                (save-excursion
+                                  (goto-char open-paren-pos)
+                                  (current-indentation))))
+         (open-line-prefix (and open-paren-pos
+                                (save-excursion
+                                  (goto-char open-paren-pos)
+                                  (buffer-substring-no-properties
+                                   (line-beginning-position) open-paren-pos))))
+         (open-line-has-text (and open-line-prefix
+                                  (string-match-p "[^ \t]" open-line-prefix))))
+    (if open-line-has-text
+        (+ open-line-indent step)
+      (+ open-paren-col step))))
 
 ;;; Anchor helpers
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
@@ -839,6 +807,12 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
             (setq found (lean4-indent--line-indent (point)))))))
       found)))
 
+(defun lean4-indent--calc-block-body-indent (start-pos base-indent step)
+  "Return indent for a term body inside a surrounding calc block, or nil."
+  (when (and start-pos (lean4-indent--in-calc-block-p start-pos))
+    (let ((calc-indent (lean4-indent--find-calc-step-indent start-pos)))
+      (if calc-indent (+ calc-indent step) (+ base-indent step)))))
+
 (defun lean4-indent--find-top-level-anchor (start-pos)
   "Return position of nearest top-level anchor before START-POS, or nil."
   (save-excursion
@@ -848,10 +822,14 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
         (forward-line -1)
         (let ((text (lean4-indent--line-text (point))))
           (unless (lean4-indent--comment-line-p (point))
-            (when (or (lean4-indent--line-top-level-anchor-p text)
-                      (lean4-indent--starts-with-p text lean4-indent--re-starts-decl))
+            (when (lean4-indent--line-top-level-anchor-p text)
               (setq found (point))))))
       found)))
+
+(defun lean4-indent--top-level-anchor-body-indent (start-pos step)
+  "Return body indentation under the nearest top-level anchor before START-POS."
+  (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
+    (and top (+ (lean4-indent--line-indent top) step))))
 
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
@@ -936,7 +914,6 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
   "Compute indentation for current line."
   (let* ((step lean4-indent-offset)
          (current-text (lean4-indent--line-text (point)))
-         (current-indent (current-indentation))
          (prev-pos (lean4-indent--prev-nonblank))
          (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
          (prev-text-no-comment (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
@@ -947,9 +924,6 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
          (prev-noncomment (and prev-pos (lean4-indent--prev-noncomment prev-pos)))
          (prev-noncomment-text (if prev-noncomment (lean4-indent--line-text prev-noncomment) ""))
          (prev-noncomment-indent (if prev-noncomment (lean4-indent--line-indent prev-noncomment) 0))
-         (prev-text-op (if (string-empty-p prev-text-no-comment)
-                           ""
-                         prev-text-no-comment))
          (mutual-indent (lean4-indent--find-mutual-indent (point)))
          (anchor (and prev-pos (lean4-indent--find-anchor prev-pos prev-indent)))
          (anchor-pos (car-safe anchor))
@@ -958,10 +932,15 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
                                      (lean4-indent--line-text-no-comment anchor-pos)
                                    ""))
          (anchor-indent (if anchor (cdr anchor) 0))
+         (anchor-body-intro-kind (and anchor-pos
+                                      (lean4-indent--line-body-intro-kind
+                                       anchor-text-no-comment)))
          (anchor-term-body-indent
-          (and anchor-pos
-               (lean4-indent--term-body-intro-indent anchor-pos anchor-text-no-comment
-                                                     anchor-indent step)))
+          (and anchor-body-intro-kind
+               (lean4-indent--body-intro-indent anchor-body-intro-kind
+                                                anchor-pos anchor-indent step)))
+         (anchor-by-block-p (memq anchor-body-intro-kind '(by coloneq-by)))
+         (anchor-starts-calc (lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-calc))
          (prev-continuation-p (and anchor-pos (= prev-indent (+ anchor-indent (* 2 step)))))
          (anchor2 (and anchor-pos (lean4-indent--find-anchor anchor-pos anchor-indent)))
          (anchor2-indent (if anchor2 (cdr anchor2) 0))
@@ -987,23 +966,22 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
          (starts-with-paren (or (lean4-indent--line-starts-with-paren-p current-text)
                                 current-is-underscore-paren))
          (starts-with-closing (lean4-indent--line-starts-with-closing-p current-text))
+         (current-plain-body-line-p
+          (and (not starts-with-paren)
+               (not starts-with-branch)
+               (not starts-with-focus)))
          (prev-starts-with-paren (lean4-indent--line-starts-with-paren-p prev-text))
          (prev-starts-with-focus (lean4-indent--focus-dot-line-p prev-text))
-         (prev-line-ends-with-colon (lean4-indent--line-ends-with-colon-p prev-text-no-comment))
-         (prev-line-ends-with-coloneq-by (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment))
-         (prev-line-ends-with-coloneq (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
-         (prev-line-ends-with-by (lean4-indent--line-ends-with-by-p prev-text-no-comment))
-         (prev-line-ends-with-fat-arrow (lean4-indent--line-ends-with-fat-arrow-p prev-text-no-comment))
-         (prev-line-ends-with-fun-arrow (lean4-indent--line-ends-with-fun-arrow-p prev-text-no-comment))
-         (prev-line-ends-with-where (lean4-indent--line-ends-with-where-p prev-text-no-comment))
-         (prev-line-ends-with-do (lean4-indent--line-ends-with-do-p prev-text-no-comment))
-         (prev-line-ends-with-then (lean4-indent--line-ends-with-then-p prev-text-no-comment))
-         (prev-line-ends-with-else (lean4-indent--line-ends-with-else-p prev-text-no-comment))
-         (prev-line-ends-with-calc (lean4-indent--line-ends-with-calc-p prev-text-no-comment))
-         (prev-line-ends-with-equals (lean4-indent--line-ends-with-equals-p prev-text-no-comment))
-         (prev-line-ends-with-op (lean4-indent--line-ends-with-op-p prev-text-op))
+         (prev-starts-with-calc-step (lean4-indent--line-starts-with-calc-step-p prev-text))
+         (prev-body-intro-kind (lean4-indent--line-body-intro-kind prev-text-no-comment))
+         (prev-term-continuation-p
+          (and (lean4-indent--line-ends-with-term-continuation-p prev-text-no-comment)
+               (not (lean4-indent--line-ends-with-at-star-p prev-text-no-comment))))
+         (prev-line-ends-with-op (lean4-indent--line-ends-with-op-p prev-text-no-comment))
          (prev-line-ends-with-comma (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
-         (prev-line-starts-with-let (lean4-indent--line-starts-with-let-p prev-text))
+         (prev-line-starts-with-let (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-let))
+         (prev-line-has-outer-coloneq (and prev-pos
+                                           (lean4-indent--line-has-outer-coloneq-p prev-pos)))
          (prevprev-pos (and prev-pos (save-excursion
                                        (goto-char prev-pos)
                                        (lean4-indent--prev-nonblank))))
@@ -1013,8 +991,32 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
          (prev-ends-with-brace (and prev-pos (string-match-p "[)}⟩]\\s-*$" prev-text)))
          (prev-ends-with-bracket (and prev-pos (string-match-p "\\]\\s-*$" prev-text)))
          (prev-closes-bracket-with-at (and prev-pos (string-match-p "\\]\\s-+at\\_>" prev-text)))
+         (prev-closes-paren (and prev-pos (lean4-indent--line-closes-paren-p prev-pos)))
          (prev-starts-with-paren-closed
-          (and prev-pos (lean4-indent--line-starts-with-paren-and-closes-p prev-pos))))
+          (and prev-pos (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
+         (nested-by-candidate-p
+          (and prev-pos
+               anchor-pos
+               (> anchor-indent 0)
+               (= prev-indent (+ anchor-indent step))
+               anchor-by-block-p))
+         (prev-calc-body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step))
+         (prev-top-level-body-indent (lean4-indent--top-level-anchor-body-indent prev-pos step))
+         (prev-have-suffices-p (string-match-p lean4-indent--re-have-suffices prev-text))
+         (prev-coloneq-by-top-level-body-indent
+          (and prev-top-level-body-indent
+               (not prev-have-suffices-p)
+               (not (and prev-pos
+                         (lean4-indent--prev-have-suffices-p prev-pos prev-indent)))
+               prev-top-level-body-indent))
+         (prev-coloneq-top-level-body-indent
+          (and (not prev-have-suffices-p)
+               (not prev-starts-with-calc-step)
+               (not anchor-starts-calc)
+               (or (and anchor-pos
+                        (lean4-indent--line-top-level-anchor-p anchor-text)
+                        (+ anchor-indent step))
+                   prev-top-level-body-indent))))
     (cond
      ;; 0) `end` lines align with their opener.
      ((lean4-indent--starts-with-p current-text "\\_<end\\_>")
@@ -1029,7 +1031,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
       prev-indent)
      ;; 1.75) A `let ...;` line continues the let-chain/body at the same indent.
      ((and prev-line-starts-with-let
-           (lean4-indent--line-ends-with-semicolon-p prev-text-op)
+           (lean4-indent--line-ends-with-semicolon-p prev-text-no-comment)
            (not starts-with-branch)
            (not starts-with-focus))
       prev-indent)
@@ -1043,7 +1045,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
           (+ prev-indent step))
          ((and prev-noncomment (lean4-indent--macro-rules-line-p prev-noncomment-text))
           (+ prev-noncomment-indent step))
-         (prev-line-ends-with-where
+         ((eq prev-body-intro-kind 'where)
           (+ prev-indent step))
          (with-indent with-indent)
          (t prev-indent))))
@@ -1062,157 +1064,106 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            (not (lean4-indent--inside-namespace-or-section-p (point))))
       0)
      ;; 3.5) `where` aligns with its declaration anchor.
-     ((and (lean4-indent--line-starts-with-where-p current-text) anchor-pos)
+     ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
-     ;; Continuation of top-level declaration binders before the colon
+     ;; Continuation of top-level declaration binders before the colon.
      ((and prev-pos
            (lean4-indent--line-top-level-anchor-p prev-text)
-           (not prev-line-ends-with-colon)
-           (not prev-line-ends-with-coloneq)
-           (not prev-line-ends-with-coloneq-by)
-           (not prev-line-ends-with-by)
-           (not prev-line-ends-with-where))
-      (+ prev-indent (* 2 step)))
-     ;; Continuation of theorem/lemma/example binders before the colon
-     ((and prev-pos
-           (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-decl)
-           (not prev-line-ends-with-colon)
-           (not prev-line-ends-with-coloneq)
-           (not prev-line-ends-with-coloneq-by)
-           (not prev-line-ends-with-by)
-           (not prev-line-ends-with-where))
+           (not prev-line-has-outer-coloneq)
+           (not (memq prev-body-intro-kind '(colon coloneq coloneq-by by where))))
       (+ prev-indent (* 2 step)))
      ;; Continuation after type-ascription without := or trailing colon
      ((and (lean4-indent--colon-before-paren-p prev-pos)
-           (not prev-line-ends-with-colon)
-           (not (string-match-p lean4-indent--re-coloneq prev-text))
+           (not (memq prev-body-intro-kind '(colon coloneq coloneq-by)))
            (not (string-match-p lean4-indent--re-from prev-text))
            starts-with-paren)
       (+ prev-indent (* 2 step)))
      ;; 4) After colon lines
-     (prev-line-ends-with-colon
+     ((eq prev-body-intro-kind 'colon)
       (cond
        (prev-continuation-p prev-indent)
        (prev-label-colon (+ prev-indent step))
        (t (+ prev-indent (* 2 step)))))
      ;; 4.5) Focus-dot lines that open a block should indent one step.
      ((and prev-starts-with-focus
-           (or prev-line-ends-with-calc
-               prev-line-ends-with-by
-               prev-line-ends-with-coloneq-by
-               prev-line-ends-with-coloneq))
+           (memq prev-body-intro-kind '(calc by coloneq-by coloneq)))
       (+ prev-indent step))
-     ;; 5) After := by
-     (prev-line-ends-with-coloneq-by
-      (cond
-       ((and prev-pos (lean4-indent--in-calc-block-p prev-pos))
-        (let ((calc-indent (lean4-indent--find-calc-step-indent prev-pos)))
-          (if calc-indent (+ calc-indent step) (+ prev-indent step))))
-       ((lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-calc)
-        (+ prev-indent step))
-       ;; If this := by closes a declaration, indent relative to that declaration line.
-       ((let* ((top (and prev-pos (lean4-indent--find-top-level-anchor prev-pos)))
-               (top-text (and top (lean4-indent--line-text top))))
-          (and top
-               (or (lean4-indent--line-top-level-anchor-p top-text)
-                   (lean4-indent--starts-with-p top-text lean4-indent--re-starts-decl))
-               (not (string-match-p lean4-indent--re-have-suffices prev-text))
-               (not (and prev-pos
-                         (lean4-indent--prev-have-suffices-p prev-pos prev-indent)))
-               (+ (lean4-indent--line-indent top) step))))
-       ((or prev-continuation-p prev-shallow-continuation-p) parent-indent)
-       (prev-starts-with-paren
-        (if (and anchor
-                 (>= (- prev-indent anchor-indent) (* 3 step)))
-            anchor-indent
-          parent-indent))
-       (t (+ prev-indent step))))
-     ;; 6) After := (no by)
-     (prev-line-ends-with-coloneq
-      (if (lean4-indent--starts-with-p current-text ":=")
-          prev-indent
-        (cond
-         ((and prev-starts-with-paren
-               (not (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
-          (+ prev-indent step))
-         ((and prev-pos (lean4-indent--in-calc-block-p prev-pos))
-          (let ((calc-indent (lean4-indent--find-calc-step-indent prev-pos)))
-            (if calc-indent (+ calc-indent step) (+ prev-indent step))))
-         ((and anchor-pos
-               (not (string-match-p lean4-indent--re-have-suffices prev-text))
-               (not (lean4-indent--line-starts-with-calc-step-p prev-text))
-               (not (lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-calc))
-               (or (lean4-indent--line-top-level-anchor-p anchor-text)
-                   (lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-decl)))
-          (+ anchor-indent step))
-         ((and (not (string-match-p lean4-indent--re-have-suffices prev-text))
-               (not (lean4-indent--line-starts-with-calc-step-p prev-text))
-               (not (and anchor-text
-                         (lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-calc)))
-               (let ((top (and prev-pos (lean4-indent--find-top-level-anchor prev-pos))))
-                 top))
-          (let ((top (and prev-pos (lean4-indent--find-top-level-anchor prev-pos))))
-            (+ (lean4-indent--line-indent top) step)))
-         ((lean4-indent--line-starts-with-calc-step-p prev-text)
-          (+ prev-indent step))
-         ((lean4-indent--starts-with-p anchor-text lean4-indent--re-starts-calc)
-          (+ anchor-indent step))
-         (prev-continuation-p
-          (max 0 (- prev-indent step)))
-         (t (+ prev-indent step)))))
-     ;; Equals in have/suffices continuations keeps indent
-     ((and prev-line-ends-with-equals
-           prev-continuation-p
-           anchor-pos
-           (string-match-p lean4-indent--re-have-suffices
-                           (lean4-indent--line-text anchor-pos)))
-      prev-indent)
-     ;; 7) After by / => / ↦ / calc / termination_by / decreasing_by / "{" / "="
-     ((or prev-line-ends-with-by
-          prev-line-ends-with-fat-arrow
-          prev-line-ends-with-fun-arrow
-          prev-line-ends-with-do
-          prev-line-ends-with-then
-          prev-line-ends-with-else
-          prev-line-ends-with-calc
-          prev-line-ends-with-equals
-          (string-match-p lean4-indent--re-ends-termination prev-text)
-          (string-match-p lean4-indent--re-ends-decreasing prev-text)
-          (lean4-indent--ends-with-p prev-text "{")
-          prev-line-ends-with-where)
-      (cond
-       ((and prev-line-ends-with-by
-             (string-match-p lean4-indent--re-fun-by prev-text))
-        parent-indent)
-       ((and prev-line-ends-with-equals
-             prev-pos
-             (lean4-indent--in-calc-block-p prev-pos))
-        (+ prev-indent (* 2 step)))
-       ((and prev-line-ends-with-fun-arrow
-             (string-match-p lean4-indent--re-classical-exact-fun prev-text))
-        (+ prev-indent (* 2 step)))
-       ((and prev-line-ends-with-fun-arrow
-             (lean4-indent--line-starts-with-fun-form-p prev-text)
-             anchor-pos
-             (= prev-indent (+ anchor-indent step))
-             (lean4-indent--line-ends-with-fun-arrow-p anchor-text-no-comment)
-             (lean4-indent--line-starts-with-fun-form-p anchor-text)
-             (not (lean4-indent--line-blank-p current-text)))
-        prev-indent)
-       ((and prev-line-ends-with-fun-arrow
-             (lean4-indent--line-starts-with-fun-form-p prev-text)
-             (lean4-indent--line-blank-p current-text))
-        prev-indent)
-       (t (+ prev-indent step))))
+     ;; 5-7) Lines following a body-introducing previous line.
+     ((memq prev-body-intro-kind
+            '(bare-have-suffices coloneq-by coloneq by fat-arrow fun-arrow do
+              then else calc equals termination decreasing open-brace where))
+      (pcase prev-body-intro-kind
+        ('bare-have-suffices
+         (+ prev-indent step))
+        ('coloneq-by
+         (cond
+          (prev-calc-body-indent)
+          (anchor-starts-calc
+           (+ prev-indent step))
+          ;; If this := by closes a declaration, indent relative to that declaration line.
+          (prev-coloneq-by-top-level-body-indent)
+          ((or prev-continuation-p prev-shallow-continuation-p) parent-indent)
+          (prev-starts-with-paren
+           (if (and anchor
+                    (>= (- prev-indent anchor-indent) (* 3 step)))
+               anchor-indent
+             parent-indent))
+          (t (+ prev-indent step))))
+        ('coloneq
+         (if (lean4-indent--starts-with-p current-text ":=")
+             prev-indent
+           (cond
+            ((and prev-starts-with-paren
+                  (not (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
+             (+ prev-indent step))
+            (prev-calc-body-indent)
+            (prev-coloneq-top-level-body-indent)
+            (prev-starts-with-calc-step
+             (+ prev-indent step))
+            (anchor-starts-calc
+             (+ anchor-indent step))
+            (prev-continuation-p
+             (max 0 (- prev-indent step)))
+            (t (+ prev-indent step)))))
+        ('equals
+         (if (and prev-continuation-p
+                  anchor-pos
+                  (string-match-p lean4-indent--re-have-suffices
+                                  (lean4-indent--line-text anchor-pos)))
+             prev-indent
+           (if (and prev-pos (lean4-indent--in-calc-block-p prev-pos))
+               (+ prev-indent (* 2 step))
+             (+ prev-indent step))))
+        ('by
+         (if (string-match-p lean4-indent--re-fun-by prev-text)
+             parent-indent
+           (+ prev-indent step)))
+        ('fun-arrow
+         (cond
+          ((string-match-p lean4-indent--re-classical-exact-fun prev-text)
+           (+ prev-indent (* 2 step)))
+          ((and (lean4-indent--line-starts-with-fun-form-p prev-text)
+                anchor-pos
+                (= prev-indent (+ anchor-indent step))
+                (eq anchor-body-intro-kind 'fun-arrow)
+                (lean4-indent--line-starts-with-fun-form-p anchor-text)
+                (not (lean4-indent--line-blank-p current-text)))
+           prev-indent)
+          ((and (lean4-indent--line-starts-with-fun-form-p prev-text)
+                (lean4-indent--line-blank-p current-text))
+           prev-indent)
+          (t (+ prev-indent step))))
+        (_
+         (+ prev-indent step))))
      ;; 7.5) Continue a simple head term when an enclosing anchor already expects one term.
      ((and anchor-term-body-indent
            (= prev-indent anchor-term-body-indent)
-           (or (lean4-indent--simple-term-head-line-p prev-text-no-comment)
-               (lean4-indent--plain-application-head-line-p prev-text-no-comment))
+           (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 '(atom application))
            (not (and starts-with-paren
                      prev-pos
-                     (lean4-indent--line-closes-paren-p prev-pos)))
-           (lean4-indent--term-continuation-line-p current-text))
+                     prev-closes-paren))
+           (lean4-indent--line-starts-structured-term-p current-text))
       (+ prev-indent step))
      ;; 8) Anonymous literal ⟨…⟩
      ((and prev-unmatched-angle
@@ -1224,45 +1175,15 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
      ;; 8.25) Lines inside ⟨ ... ⟩ literals
      ((and open-paren-col
            (eq open-paren-char lean4-indent--char-left-angle)
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus)
+           current-plain-body-line-p
            (not (lean4-indent--starts-with-p current-text "⟩")))
-      (let* ((open-line-indent (and open-paren-pos
-                                    (save-excursion
-                                      (goto-char open-paren-pos)
-                                      (current-indentation))))
-             (open-line-prefix (and open-paren-pos
-                                    (save-excursion
-                                      (goto-char open-paren-pos)
-                                      (buffer-substring-no-properties
-                                       (line-beginning-position) open-paren-pos))))
-             (open-line-has-text (and open-line-prefix
-                                      (string-match-p "[^ \t]" open-line-prefix))))
-        (if open-line-has-text
-            (+ open-line-indent step)
-          (+ open-paren-col step))))
+      (lean4-indent--open-delimited-body-indent open-paren-pos open-paren-col step))
      ;; 8.5) Lines inside { ... } structure literals
      ((and open-paren-col
            (eq open-paren-char ?{)
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus)
+           current-plain-body-line-p
            (not (lean4-indent--starts-with-p current-text "}")))
-      (let* ((open-line-indent (and open-paren-pos
-                                    (save-excursion
-                                      (goto-char open-paren-pos)
-                                      (current-indentation))))
-             (open-line-prefix (and open-paren-pos
-                                    (save-excursion
-                                      (goto-char open-paren-pos)
-                                      (buffer-substring-no-properties
-                                       (line-beginning-position) open-paren-pos))))
-             (open-line-has-text (and open-line-prefix
-                                      (string-match-p "[^ \t]" open-line-prefix))))
-        (if open-line-has-text
-            (+ open-line-indent step)
-          (+ open-paren-col step))))
+      (lean4-indent--open-delimited-body-indent open-paren-pos open-paren-col step))
      ;; 8.75) Closing delimiters align with opener
      ((and starts-with-closing open-paren-col)
       open-paren-col)
@@ -1270,29 +1191,33 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
      (starts-with-paren
       (let* ((leading-parens (lean4-indent--leading-paren-count prev-text))
              (first-non-paren-col (+ prev-indent leading-parens))
-             (last-unmatched-col (and prev-pos (lean4-indent--last-unmatched-open-paren-col prev-pos))))
+             (last-unmatched-col (and prev-pos (lean4-indent--last-unmatched-open-paren-col prev-pos)))
+             (paren-scan (and prev-pos
+                              (lean4-indent--scan-prev-paren-lines
+                               prev-pos prev-indent (- prev-indent (* 2 step)))))
+             (prev-paren-block-min-indent (plist-get paren-scan :block-min-indent))
+             (prev-paren-sibling-indent (plist-get paren-scan :sibling-indent))
+             (prev-paren-dedent-indent (plist-get paren-scan :dedent-indent)))
         (cond
-         ((and (lean4-indent--line-ends-with-term-continuation-p prev-text-op)
-               (not (lean4-indent--line-ends-with-at-star-p prev-text-op)))
+         (prev-term-continuation-p
           (+ prev-indent step))
          (current-is-underscore-paren
-          (or (and prev-pos (lean4-indent--find-prev-paren-dedent prev-pos (- prev-indent (* 2 step))))
-              (and prev-pos (lean4-indent--prev-paren-block-min-indent prev-pos))
-              (and prev-pos (lean4-indent--find-prev-paren-start-indent prev-pos prev-indent))
+          (or prev-paren-dedent-indent
+              prev-paren-block-min-indent
+              prev-paren-sibling-indent
               last-unmatched-col
               open-paren-col
               prev-indent))
          ((and prev-pos
                anchor-pos
-               (lean4-indent--line-closes-paren-p prev-pos)
+               prev-closes-paren
                (lean4-indent--line-starts-with-paren-p anchor-text))
           anchor-indent)
          ((and (not open-paren-col)
                prev-pos
-               (lean4-indent--line-closes-paren-p prev-pos)
+               prev-closes-paren
                (not prev-line-ends-with-comma))
-          (or (lean4-indent--find-prev-paren-start-indent prev-pos prev-indent)
-              prev-indent))
+          (or prev-paren-sibling-indent prev-indent))
          (prev-starts-with-paren-closed
           prev-indent)
          (prev-line-ends-with-comma
@@ -1311,24 +1236,21 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
      ;; 10) Calc-step operator continuation (_ = ... *)
      ((and prev-line-ends-with-op
            (lean4-indent--line-starts-with-calc-step-p prev-text)
-           (not (lean4-indent--line-ends-with-term-continuation-p prev-text-op)))
+           (not prev-term-continuation-p))
       prev-indent)
      ;; 10.25) Term continuation operators (<;>, ;)
-     ((and (lean4-indent--line-ends-with-term-continuation-p prev-text-op)
-           (not (lean4-indent--line-ends-with-at-star-p prev-text-op)))
+     (prev-term-continuation-p
       (if (and prev-pos (lean4-indent--line-starts-with-calc-step-p prev-text))
           (+ prev-indent (* 2 step))
         (+ prev-indent step)))
      ;; 10.5) Operator continuation
-     ((lean4-indent--operator-continuation-p prev-text-op)
+     ((lean4-indent--operator-continuation-p prev-text-no-comment)
       prev-indent)
      ;; 10.75) Arguments continue after an open paren on the previous line.
      ((and prev-pos
            open-paren-col-prev
            (lean4-indent--line-opens-paren-p prev-pos)
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus))
+           current-plain-body-line-p)
       (+ prev-indent step))
      ;; 11) Focus dots
      (prev-starts-with-focus
@@ -1338,63 +1260,52 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            prev-line-ends-with-comma
            open-paren-char-prev
            (memq open-paren-char-prev (list ?\( ?\[ lean4-indent--char-left-angle))
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus))
+           current-plain-body-line-p)
       (+ prev-indent step))
      ;; 11.25) Dedent after closing a paren/bracket/brace line.
      ((and prev-pos
            anchor-pos
            (not open-paren-col)
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus)
+           current-plain-body-line-p
            (not (string-match-p lean4-indent--re-ends-angle-close prev-text))
            (or (lean4-indent--line-starts-with-closing-p prev-text)
                prev-ends-with-brace
                prev-closes-bracket-with-at
                (and prev-ends-with-bracket
                     (not (string-match-p "\\]\\s-*$" current-text))))
-           (lean4-indent--line-closes-paren-p prev-pos))
+           prev-closes-paren)
       (let* ((anchor-text (lean4-indent--line-text anchor-pos))
              (anchor-parent (lean4-indent--find-anchor anchor-pos anchor-indent)))
         (if (lean4-indent--starts-with-p anchor-text "{")
             (if anchor-parent (cdr anchor-parent) 0)
           anchor-indent)))
      ;; 11.4) Dedent after exact before a simp-like line in nested by blocks.
-     ((and prev-pos
-           anchor-pos
-           (> anchor-indent 0)
-           (= prev-indent (+ anchor-indent step))
-           (let ((anchor-text (lean4-indent--line-text anchor-pos)))
-             (or (lean4-indent--line-ends-with-by-p anchor-text)
-                 (lean4-indent--line-ends-with-coloneq-by-p anchor-text)))
-           (lean4-indent--line-starts-with-exact-p prev-text)
-           (lean4-indent--line-starts-with-simp-like-p current-text))
+     ((and nested-by-candidate-p
+           (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-exact)
+           (lean4-indent--starts-with-p current-text lean4-indent--re-starts-simp-like))
       anchor-indent)
      ;; 11.5) Dedent after nested `by` blocks that close on the previous line.
-     ((and prev-pos
-           anchor-pos
-           (> anchor-indent 0)
-           (= prev-indent (+ anchor-indent step))
-           (let ((anchor-text (lean4-indent--line-text anchor-pos)))
-             (or (lean4-indent--line-ends-with-by-p anchor-text)
-                 (lean4-indent--line-ends-with-coloneq-by-p anchor-text)))
-           (let ((prev-simp (lean4-indent--line-starts-with-simp-like-p prev-text))
-                 (prevprev-simp (lean4-indent--line-starts-with-simp-like-p prevprev-text)))
-             (or prev-simp (and prevprev-simp (lean4-indent--line-closes-paren-p prev-pos))))
+     ((and nested-by-candidate-p
+           (let ((prev-simp (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-simp-like))
+                 (prevprev-simp (lean4-indent--starts-with-p prevprev-text lean4-indent--re-starts-simp-like)))
+             (or prev-simp (and prevprev-simp prev-closes-paren)))
            (not (lean4-indent--line-blank-p current-text))
-           (not starts-with-paren)
-           (not starts-with-branch)
-           (not starts-with-focus)
+           current-plain-body-line-p
            (not prev-line-ends-with-op)
            (not prev-line-ends-with-comma)
-           (not prev-line-ends-with-colon)
-           (not prev-line-ends-with-coloneq)
-           (not prev-line-ends-with-coloneq-by)
-           (not prev-line-ends-with-by)
-           (or (lean4-indent--line-closes-paren-p prev-pos)
+           (not (memq prev-body-intro-kind '(colon coloneq coloneq-by by)))
+           (or prev-closes-paren
                (lean4-indent--line-contains-balanced-bracket-p prev-pos)))
+      anchor-indent)
+     ;; 11.75) Blank lines after a first-level declaration body snap back to the declaration.
+     ((and (lean4-indent--line-blank-p current-text)
+           anchor-pos
+           (lean4-indent--line-top-level-anchor-p anchor-text)
+           (memq anchor-body-intro-kind '(coloneq coloneq-by))
+           (= prev-indent (+ anchor-indent step))
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma)
+           (not prev-body-intro-kind))
       anchor-indent)
      ;; 12) Fallback
      (t
