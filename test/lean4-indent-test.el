@@ -187,6 +187,102 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
            t)
        (error nil)))))
 
+(ert-deftest lean4-indent--non-tab-reindent-preserves-dedented-tactic-line ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  have h : True := by\n"
+       "    trivial\n"
+       "  exact h\n")
+    (lean4-test--goto-eob)
+    (let ((before (lean4-test--line-string)))
+      (funcall #'lean4-indent-line-function)
+      (should (equal (lean4-test--line-string) before)))))
+
+(ert-deftest lean4-indent--non-tab-reindent-preserves-dedented-focus-tactic-line ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sb_right_inv {x : α} (hx : x ∉ sbSet f g) : g (invFun g x) = x := by\n"
+       "  have : x ∈ g '' univ := by\n"
+       "    contrapose! hx\n"
+       "    rw [sbSet, mem_iUnion]\n"
+       "    use 0\n"
+       "    rw [sbAux, mem_diff]\n"
+       "    constructor\n"
+       "    · exact trivial\n"
+       "    · assumption\n")
+    (lean4-test--goto-eob)
+    (let ((before (lean4-test--line-string)))
+      (funcall #'lean4-indent-line-function)
+      (should (equal (lean4-test--line-string) before)))))
+
+(ert-deftest lean4-indent--non-tab-reindent-preserves-mid-buffer-focus-tactic-line ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sb_right_inv {x : α} (hx : x ∉ sbSet f g) : g (invFun g x) = x := by\n"
+       "  have : x ∈ g '' univ := by\n"
+       "    contrapose! hx\n"
+       "    rw [sbSet, mem_iUnion]\n"
+       "    use 0\n"
+       "    rw [sbAux, mem_diff]\n"
+       "    constructor\n"
+       "    · exact trivial\n"
+       "    · assumption\n"
+       "  have : ∃ y, g y = x := by\n"
+       "    contrapose! hx\n"
+       "    rw [sbSet, mem_iUnion]\n"
+       "    use 0\n"
+       "    rw [sbAux, mem_diff]\n"
+       "    constructor\n"
+       "    · exact trivial\n"
+       "    simpa\n"
+       "  rcases this with ⟨y, hy⟩\n"
+       "  apply invFun_eq\n")
+    (lean4-test--goto-line 9)
+    (let ((before (lean4-test--line-string)))
+      (funcall #'lean4-indent-line-function)
+      (should (equal (lean4-test--line-string) before)))))
+
+(ert-deftest lean4-indent--indent-region-preserves-complete-tactic-proof ()
+  (let ((contents
+         (concat
+          "theorem sb_right_inv {x : α} (hx : x ∉ sbSet f g) : g (invFun g x) = x := by\n"
+          "  have : x ∈ g '' univ := by\n"
+          "    contrapose! hx\n"
+          "    rw [sbSet, mem_iUnion]\n"
+          "    use 0\n"
+          "    rw [sbAux, mem_diff]\n"
+          "    constructor\n"
+          "    · exact trivial\n"
+          "    · assumption\n"
+          "  have : ∃ y, g y = x := by\n"
+          "    contrapose! hx\n"
+          "    rw [sbSet, mem_iUnion]\n"
+          "    use 0\n"
+          "    rw [sbAux, mem_diff]\n"
+          "    constructor\n"
+          "    · exact trivial\n"
+          "    simpa\n"
+          "  rcases this with ⟨y, hy⟩\n"
+          "  apply invFun_eq\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--non-tab-reindent-still-normalizes-term-code ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=\n"
+       "  Iff.intro\n"
+       "    (fun hnpnq: _ =>\n"
+       "      have hnp := hnpnq.left\n"
+       "      have hnq := hnpnq.right\n"
+       "  (fun hpq: p ∨ q =>\n")
+    (lean4-test--goto-eob)
+    (funcall #'lean4-indent-line-function)
+    (should (equal (lean4-test--line-string) "      (fun hpq: p ∨ q =>"))))
+
 (ert-deftest lean4-indent--balanced-bracket-ignores-comment ()
   (lean4-test-with-indent-buffer
       (concat

@@ -731,6 +731,28 @@ Otherwise return anchor-indent + step."
           (max 0 (- anchor-indent step))
         (+ anchor-indent step)))))
 
+(defun lean4-indent--find-enclosing-body-intro-anchor (prev-pos prev-indent kinds)
+  "Find nearest enclosing anchor whose body-intro kind is in KINDS.
+Search upward from PREV-POS/PREV-INDENT through the anchor chain.
+Return (anchor-pos . anchor-indent), or nil if none matches."
+  (let ((anchor (and prev-pos (lean4-indent--find-anchor prev-pos prev-indent)))
+        (found nil))
+    (while (and anchor (not found))
+      (let* ((anchor-pos (car anchor))
+             (anchor-indent (cdr anchor))
+             (anchor-text-no-comment
+              (if (and anchor-pos (not (lean4-indent--comment-line-p anchor-pos)))
+                  (lean4-indent--line-text-no-comment anchor-pos)
+                ""))
+             (anchor-kind
+              (and anchor-pos
+                   (lean4-indent--line-body-intro-kind anchor-text-no-comment))))
+        (if (memq anchor-kind kinds)
+            (setq found anchor)
+          (setq anchor (and anchor-pos
+                            (lean4-indent--find-anchor anchor-pos anchor-indent))))))
+    found))
+
 (defun lean4-indent--find-with-indent (start-pos limit-indent)
   "Find indent of nearest preceding match/cases/induction `with` line.
 Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-nil."
@@ -1324,15 +1346,43 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
           (if (< next 0) computed next))
       computed)))
 
+(defun lean4-indent--acceptable-tactic-indent-p (computed current)
+  "Return non-nil if CURRENT is acceptable inside a tactic block.
+
+This is intentionally permissive only for non-TAB reindentation: any
+indent between the enclosing `by`/`:= by` anchor and COMPUTED is
+accepted.  Outside tactic blocks this returns nil."
+  (let* ((current-text (lean4-indent--line-text (point)))
+         (current-trim (string-trim current-text))
+         (current-tactic-body-line-p
+          (and (not (string-empty-p current-trim))
+               (not (lean4-indent--line-top-level-anchor-p current-text))))
+         (prev-pos (lean4-indent--prev-nonblank))
+         (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+         (anchor
+          (lean4-indent--find-enclosing-body-intro-anchor
+           prev-pos prev-indent '(by coloneq-by)))
+         (anchor-pos (car-safe anchor))
+         (anchor-indent (if anchor (cdr anchor) 0)))
+    (and current-tactic-body-line-p
+         anchor-pos
+         (> current 0)
+         (<= anchor-indent current)
+         (<= current computed))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
   (let* ((computed (lean4-indent--compute-indent))
          (current (current-indentation))
-         (target (if (and (eq this-command 'indent-for-tab-command)
-                          (eq last-command 'indent-for-tab-command))
-                     (lean4-indent--cycle-indent computed current)
-                   computed))
+         (tabp (eq this-command 'indent-for-tab-command))
+         (target (cond
+                  ((and tabp (eq last-command 'indent-for-tab-command))
+                   (lean4-indent--cycle-indent computed current))
+                  ((and (not tabp)
+                        (lean4-indent--acceptable-tactic-indent-p computed current))
+                   current)
+                  (t computed)))
          (eolp (eolp)))
     (indent-line-to (max 0 target))
     (when eolp
