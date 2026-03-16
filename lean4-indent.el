@@ -107,6 +107,7 @@ current line."
   '("attribute" "compile_inductive" "def" "instance" "partial_fixpoint"
     "theorem" "lemma" "example" "structure" "inductive" "class" "abbrev"
     "macro" "syntax" "notation" "set_option" "open" "universe" "variable" "@["
+    "scoped["
     "namespace" "section" "public section")
   "Top-level anchors that snap to column 0 when not nested.")
 
