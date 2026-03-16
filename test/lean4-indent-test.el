@@ -1759,6 +1759,11 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction")
 
 variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--wrapped-top-level-variable-line
+ "variable {ι R : Type*} {S : ι → Type*} [CommSemiring R] [∀ i, Semiring (S i)] [∀ i, Algebra R (S i)]
+  {s : Set ι} {t t₁ t₂ : ∀ i, Subalgebra R (S i)} {x : ∀ i, S i}")
+
 (ert-deftest lean4-indent--dedents-after-sorry-with-comment ()
   (lean4-test-with-indent-buffer
       (concat

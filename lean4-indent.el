@@ -457,6 +457,16 @@ Return a symbol such as `colon', `coloneq', `by', or
    "\\`[ \t]*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
    text))
 
+(defun lean4-indent--line-top-level-binder-head-kind (text)
+  "Classify a top-level binder head line TEXT.
+
+Return `declaration' for ordinary wrapped declaration headers, `variable' for
+wrapped `variable' lines, or nil if TEXT is neither."
+  (cond
+   ((lean4-indent--line-top-level-declaration-head-p text) 'declaration)
+   ((string-match-p "\\`[ \t]*\\_<variable\\_>" text) 'variable)
+   (t nil)))
+
 (defun lean4-indent--line-starts-with-paren-p (text)
   (lean4-indent--starts-with-p text lean4-indent--re-starts-paren))
 
@@ -1164,12 +1174,15 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
-     ;; Continuation of top-level declaration binders before the colon.
+     ;; Continuation of wrapped top-level declaration/variable binders.
      ((and prev-pos
-           (lean4-indent--line-top-level-declaration-head-p prev-text)
+           (lean4-indent--line-top-level-binder-head-kind prev-text)
            (not prev-line-has-outer-coloneq)
            (not (memq prev-body-intro-kind '(colon coloneq coloneq-by by where))))
-      (+ prev-indent (* 2 step)))
+      (+ prev-indent
+         (pcase (lean4-indent--line-top-level-binder-head-kind prev-text)
+           ('variable step)
+           (_ (* 2 step)))))
      ;; Continuation of a wrapped declaration statement across relation lines.
      ((and anchor-pos
            (lean4-indent--line-top-level-declaration-head-p anchor-text)
