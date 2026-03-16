@@ -533,6 +533,11 @@ INDENT."
   "Return non-nil if TEXT starts with a relation operator."
   (string-match-p "\\`[ \t]*\\(?:=\\|≤\\|≥\\|↔\\|≠\\)" text))
 
+(defun lean4-indent--show-body-column (text)
+  "Return the body column for a `show` line TEXT, or nil."
+  (when (string-match "\\`[ \t]*show\\s-+" text)
+    (match-end 0)))
+
 (defun lean4-indent--tactic-term-tail-head-kind (text)
   "Classify the term tail on a tactic line TEXT, or return nil.
 
@@ -1277,13 +1282,27 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
                (+ prev-indent (* 2 step))
              (+ prev-indent step))))
         ('by
-         (if (string-match-p lean4-indent--re-fun-by prev-text)
-             parent-indent
-           (+ prev-indent step)))
+         (cond
+          ((and anchor-pos
+                (lean4-indent--show-body-column anchor-text-no-comment)
+                (= prev-indent
+                   (lean4-indent--show-body-column anchor-text-no-comment)))
+           (+ anchor-indent step))
+          ((string-match-p lean4-indent--re-fun-by prev-text)
+           (if (< parent-indent prev-indent)
+               parent-indent
+             (+ prev-indent step)))
+          (t
+           (+ prev-indent step))))
         ('fun-arrow
          (cond
           ((string-match-p lean4-indent--re-classical-exact-fun prev-text)
            (+ prev-indent (* 2 step)))
+          ((and anchor-pos
+                (lean4-indent--line-top-level-declaration-head-p anchor-text)
+                (= prev-indent (+ anchor-indent (* 2 step)))
+                (not (lean4-indent--line-blank-p current-text)))
+           parent-indent)
           ((and (lean4-indent--line-starts-with-fun-form-p prev-text)
                 anchor-pos
                 (= prev-indent (+ anchor-indent step))
@@ -1346,6 +1365,7 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
      ;; 8.5) Lines inside { ... } structure literals
      ((and open-paren-col
            (eq open-paren-char ?{)
+           (not anchor-by-block-p)
            current-plain-body-line-p
            (not (lean4-indent--starts-with-p current-text "}")))
       (lean4-indent--open-delimited-body-indent open-paren-pos open-paren-col step))
@@ -1408,6 +1428,11 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
       (if (and prev-pos (lean4-indent--line-starts-with-calc-step-p prev-text))
           (+ prev-indent (* 2 step))
         (+ prev-indent step)))
+     ;; 10.6) Continuation of a multiline `show` proposition aligns under `show`.
+     ((and prev-pos
+           (lean4-indent--show-body-column prev-text-no-comment)
+           (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+      (lean4-indent--show-body-column prev-text-no-comment))
      ;; 10.5) Operator continuation
      ((lean4-indent--operator-continuation-p prev-text-no-comment)
       prev-indent)

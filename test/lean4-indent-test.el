@@ -358,6 +358,48 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         (indent-region (point-min) (point-max))
         (should (equal (buffer-string) before))))))
 
+(ert-deftest lean4-indent--indent-region-preserves-restrict-scalars-def ()
+  (let ((contents
+         (concat
+          "def restrictScalars (U : Subalgebra S A) : Subalgebra R A :=\n"
+          "  { U with\n"
+          "    algebraMap_mem' := fun x ↦ by\n"
+          "      rw [IsScalarTower.algebraMap_apply R S A]\n"
+          "      exact U.algebraMap_mem _ }\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-restrict-scalars-injective ()
+  (let ((contents
+         (concat
+          "theorem restrictScalars_injective :\n"
+          "    Function.Injective (restrictScalars R : Subalgebra S A → Subalgebra R A) := fun U V H ↦\n"
+          "  ext fun x ↦ by rw [← mem_restrictScalars R, H, mem_restrictScalars]\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-adjoin-range-proof ()
+  (let ((contents
+         (concat
+          "theorem adjoin_range_toAlgHom (t : Set A) :\n"
+          "    (Algebra.adjoin (toAlgHom R S A).range t).restrictScalars R =\n"
+          "      (Algebra.adjoin S t).restrictScalars R :=\n"
+          "  Subalgebra.ext fun z ↦\n"
+          "    show z ∈ Subsemiring.closure (Set.range (algebraMap (toAlgHom R S A).range A) ∪ t : Set A) ↔\n"
+          "         z ∈ Subsemiring.closure (Set.range (algebraMap S A) ∪ t : Set A) by\n"
+          "      suffices Set.range (algebraMap (toAlgHom R S A).range A) = Set.range (algebraMap S A) by\n"
+          "        rw [this]\n"
+          "      ext z\n"
+          "      exact ⟨fun ⟨⟨_, y, h1⟩, h2⟩ ↦ ⟨y, h2 ▸ h1⟩, fun ⟨y, hy⟩ ↦ ⟨⟨z, y, hy⟩, rfl⟩⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
 (ert-deftest lean4-indent--non-tab-reindent-still-normalizes-term-code ()
   (lean4-test-with-indent-buffer
       (concat
