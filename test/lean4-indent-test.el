@@ -295,6 +295,33 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         (indent-region (point-min) (point-max))
         (should (equal (buffer-string) before))))))
 
+(ert-deftest lean4-indent--indent-region-preserves-mathlib-mul-to-submodule ()
+  (let ((contents
+         (concat
+          "theorem mul_toSubmodule {R : Type*} {A : Type*} [CommSemiring R] [CommSemiring A] [Algebra R A]\n"
+          "    (S T : Subalgebra R A) : (Subalgebra.toSubmodule S) * (Subalgebra.toSubmodule T)\n"
+          "        = Subalgebra.toSubmodule (S ⊔ T) := by\n"
+          "  refine le_antisymm (mul_toSubmodule_le _ _) ?_\n"
+          "  rintro x (hx : x ∈ Algebra.adjoin R (S ∪ T : Set A))\n"
+          "  refine\n"
+          "    Algebra.adjoin_induction (fun x hx => ?_) (fun r => ?_) (fun _ _ _ _ => Submodule.add_mem _)\n"
+          "      (fun x y _ _ hx hy => ?_) hx\n"
+          "  · rcases hx with hxS | hxT\n"
+          "    · rw [← mul_one x]\n"
+          "      exact Submodule.mul_mem_mul hxS (show (1 : A) ∈ T from one_mem T)\n"
+          "    · rw [← one_mul x]\n"
+          "      exact Submodule.mul_mem_mul (show (1 : A) ∈ S from one_mem S) hxT\n"
+          "  · rw [← one_mul (algebraMap _ _ _)]\n"
+          "    exact Submodule.mul_mem_mul (show (1 : A) ∈ S from one_mem S) (algebraMap_mem T _)\n"
+          "  have := Submodule.mul_mem_mul hx hy\n"
+          "  rwa [mul_assoc, mul_comm _ (Subalgebra.toSubmodule T), ← mul_assoc _ _ (Subalgebra.toSubmodule S),\n"
+          "    isIdempotentElem_toSubmodule, mul_comm T.toSubmodule, ← mul_assoc,\n"
+          "    isIdempotentElem_toSubmodule] at this\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
 (ert-deftest lean4-indent--non-tab-reindent-still-normalizes-term-code ()
   (lean4-test-with-indent-buffer
       (concat

@@ -519,6 +519,10 @@ INDENT."
         (lean4-indent--line-starts-with-paren-p trim)
         (string-match-p "\\`⟨" trim))))
 
+(defun lean4-indent--line-starts-with-relop-p (text)
+  "Return non-nil if TEXT starts with a relation operator."
+  (string-match-p "\\`[ \t]*\\(?:=\\|≤\\|≥\\|↔\\|≠\\)" text))
+
 (defun lean4-indent--tactic-term-tail-head-kind (text)
   "Classify the term tail on a tactic line TEXT, or return nil.
 
@@ -530,6 +534,10 @@ tail."
            "\\`\\(?:exact\\|refine\\|apply\\)\\_>\\s-+\\(.+\\)\\'"
            trim)
       (lean4-indent--line-application-head-kind (match-string 1 trim)))))
+
+(defun lean4-indent--bare-tactic-term-intro-line-p (text)
+  "Return non-nil if TEXT is a bare `exact'/`refine'/`apply' line."
+  (string-match-p "\\`[ \t]*\\(?:exact\\|refine\\|apply\\)\\_>[ \t]*\\'" text))
 
 (defun lean4-indent--line-leading-angle-paren-col (text)
   "Return the column of the leading '(' in a line starting with `⟨(`, or nil."
@@ -887,6 +895,33 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
   (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
     (and top (+ (lean4-indent--line-indent top) step))))
 
+(defun lean4-indent--top-level-declaration-body-intro-kind (start-pos)
+  "Return the body-intro kind for the nearest enclosing top-level declaration.
+
+For wrapped declarations, scan forward from the top-level declaration head to
+the first line that introduces the declaration body, such as `:=', `:= by', or
+`where'.  Return nil when START-POS is not inside such a declaration."
+  (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
+    (when top
+      (let ((top-text (lean4-indent--line-text top)))
+        (when (lean4-indent--line-top-level-declaration-head-p top-text)
+          (save-excursion
+            (goto-char top)
+            (catch 'found
+              (while (<= (point) start-pos)
+                (let ((text (lean4-indent--line-text (point))))
+                  (unless (or (lean4-indent--line-blank-p text)
+                              (lean4-indent--comment-line-p (point)))
+                    (when (> (point) top)
+                      (when (lean4-indent--line-top-level-anchor-p text)
+                        (throw 'found nil)))
+                    (let ((kind (lean4-indent--line-body-intro-kind
+                                 (lean4-indent--line-text-no-comment (point)))))
+                      (when kind
+                        (throw 'found kind)))))
+                (forward-line 1))
+              nil)))))))
+
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
   (save-excursion
@@ -1133,6 +1168,13 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            (not prev-line-has-outer-coloneq)
            (not (memq prev-body-intro-kind '(colon coloneq coloneq-by by where))))
       (+ prev-indent (* 2 step)))
+     ;; Continuation of a wrapped declaration statement across relation lines.
+     ((and anchor-pos
+           (lean4-indent--line-top-level-declaration-head-p anchor-text)
+           (not prev-line-has-outer-coloneq)
+           (lean4-indent--line-starts-with-relop-p current-text)
+           (= prev-indent (+ anchor-indent (* 2 step))))
+      (+ prev-indent (* 2 step)))
      ;; Continuation after type-ascription without := or trailing colon
      ((and (lean4-indent--colon-before-paren-p prev-pos)
            (not (memq prev-body-intro-kind '(colon coloneq coloneq-by)))
@@ -1231,6 +1273,21 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
                (and prev-top-level-body-indent
                     (= prev-indent prev-top-level-body-indent)))
            (memq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
+                 '(atom application))
+           (lean4-indent--line-starts-structured-term-p current-text))
+      (+ prev-indent step))
+     ;; 7.65) Bare `refine`/`exact`/`apply` start a multiline tactic term.
+     ((and (or anchor-by-block-p
+               (and prev-top-level-body-indent
+                    (= prev-indent prev-top-level-body-indent)))
+           (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment)
+           (not (lean4-indent--line-blank-p current-text)))
+      (+ prev-indent step))
+     ;; 7.7) Continue the multiline term introduced after a bare tactic line.
+     ((and anchor-pos
+           (= prev-indent (+ anchor-indent step))
+           (lean4-indent--bare-tactic-term-intro-line-p anchor-text-no-comment)
+           (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  '(atom application))
            (lean4-indent--line-starts-structured-term-p current-text))
       (+ prev-indent step))
@@ -1415,6 +1472,9 @@ accepted.  Outside tactic blocks this returns nil."
          (prev-pos (lean4-indent--prev-nonblank))
          (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
          (step lean4-indent-offset)
+         (top-body-intro-kind
+          (and prev-pos
+               (lean4-indent--top-level-declaration-body-intro-kind prev-pos)))
          (anchor
           (lean4-indent--find-enclosing-body-intro-anchor
            prev-pos prev-indent '(by coloneq-by)))
@@ -1427,6 +1487,12 @@ accepted.  Outside tactic blocks this returns nil."
              anchor-pos
              (> current 0)
              (<= anchor-indent current)
+             (<= current computed))
+        (and current-tactic-body-line-p
+             (eq top-body-intro-kind 'coloneq-by)
+             prev-top-level-body-indent
+             (> current 0)
+             (<= prev-top-level-body-indent current)
              (<= current computed))
         (and current-tactic-body-line-p
              (lean4-indent--focus-dot-line-p current-text)
