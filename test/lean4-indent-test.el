@@ -1561,6 +1561,14 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   default := 0
   := 1")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--protected-def-where-multiline-field-body
+ "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
+  smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)
+  one_smul S := (congr_arg (fun f => S.map f) (AlgHom.ext <| one_smul R')).trans S.map_id
+  mul_smul _a₁ _a₂ S :=
+    (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm")
+
 (ert-deftest lean4-indent--multiline-have-with-body ()
   (lean4-test-with-indent-buffer
       (concat
@@ -1613,7 +1621,7 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (goto-char (point-min))
     (forward-line 1)
     (funcall indent-line-function)
-    (should (equal (lean4-test--line-string) "  def bar : Nat := by"))))
+    (should (equal (lean4-test--line-string) "def bar : Nat := by"))))
 
 (ert-deftest lean4-indent--top-level-section-snaps-left ()
   (lean4-test-with-indent-buffer "  section Foo\n"
@@ -1667,6 +1675,18 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "attribute [simp] Foo.bar"))))
 
+(lean4-define-final-line-indent-test
+ lean4-indent--top-level-attribute-after-open
+ "open Pointwise
+
+@[simp, norm_cast]")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--top-level-variable-after-section
+ "section Pointwise
+
+variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
+
 (ert-deftest lean4-indent--dedents-after-sorry-with-comment ()
   (lean4-test-with-indent-buffer
       (concat
@@ -1683,7 +1703,7 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
        "example : True := by\n"
        "  trivial\n")
     (lean4-test--goto-eob)
-    (lean4-test--newline-and-assert "")))
+    (lean4-test--newline-and-assert "  ")))
 
 (ert-deftest lean4-indent--newline-after-top-level-check-dedents ()
   (lean4-test-with-indent-buffer "#check 37\n"
@@ -1694,6 +1714,51 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   (lean4-test-with-indent-buffer "example : Nat := 2\n"
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "")))
+
+(ert-deftest lean4-indent--newline-inside-tactic-proof-keeps-prev-indent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sb_right_inv {x : α} (hx : x ∉ sbSet f g) : g (invFun g x) = x := by\n"
+       "  have : x ∈ g '' univ := by\n"
+       "    contrapose! hx\n"
+       "    rw [sbSet, mem_iUnion]\n"
+       "    use 0\n"
+       "    rw [sbAux, mem_diff]\n"
+       "    constructor\n"
+       "    · exact trivial\n"
+       "    · assumption\n"
+       "  have : ∃ y, g y = x := by\n"
+       "    contrapose! hx\n"
+       "    rw [sbSet, mem_iUnion]\n"
+       "    use 0\n"
+       "    rw [sbAux, mem_diff]\n"
+       "    constructor\n"
+       "    · exact trivial\n"
+       "    simpa\n"
+       "  rcases this with ⟨y, hy⟩\n"
+       "  apply invFun_eq\n")
+    (lean4-test--goto-line 18)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")
+    (delete-region (line-beginning-position) (line-end-position))
+    (delete-char -1)
+    (lean4-test--goto-line 19)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  trivial\n")
+    (lean4-test--goto-eob)
+    (lean4-test--open-line-below)
+    (should (equal (lean4-test--line-string) ""))
+    (lean4-test--tab-indent)
+    (should (equal (lean4-test--line-string) "  "))
+    (let ((last-command 'indent-for-tab-command))
+      (lean4-test--tab-indent))
+    (should (equal (lean4-test--line-string) ""))))
 
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-check-after-single-line-top-level-decl
@@ -1825,6 +1890,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         hpq.elim hnp hnq))
 
 theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) :=")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--exact-smul-induction-sibling-fun-line
+ "theorem smul_induction_on' {x : M} (hx : x ∈ I • N) {p : ∀ x, x ∈ I • N → Prop}
+    (smul : ∀ (r : A) (hr : r ∈ I) (n : M) (hn : n ∈ N), p (r • n) (smul_mem_smul hr hn))
+    (add : ∀ x hx y hy, p x hx → p y hy → p (x + y) (add_mem ‹_› ‹_›)) : p x hx := by
+  refine Exists.elim ?_ fun (h : x ∈ I • N) (H : p x h) ↦ H
+  exact smul_induction_on hx (fun a ha x hx ↦ ⟨_, smul _ ha _ hx⟩)
+    fun x y ⟨_, hx⟩ ⟨_, hy⟩ ↦ ⟨_, add _ _ _ _ hx hy⟩")
 
 (lean4-define-final-line-indent-test
  lean4-indent--list-rec-on-lambda-line

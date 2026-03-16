@@ -106,7 +106,7 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "compile_inductive" "def" "instance" "partial_fixpoint"
     "theorem" "lemma" "example" "structure" "inductive" "class" "abbrev"
-    "macro" "syntax" "notation" "set_option" "open" "universe" "@["
+    "macro" "syntax" "notation" "set_option" "open" "universe" "variable" "@["
     "namespace" "section" "public section")
   "Top-level anchors that snap to column 0 when not nested.")
 
@@ -512,6 +512,18 @@ INDENT."
         (string-match-p "\\`do\\_>" trim)
         (lean4-indent--line-starts-with-paren-p trim)
         (string-match-p "\\`⟨" trim))))
+
+(defun lean4-indent--tactic-term-tail-head-kind (text)
+  "Classify the term tail on a tactic line TEXT, or return nil.
+
+This recognizes tactic commands whose first argument is an ordinary
+term and reuses `lean4-indent--line-application-head-kind' on that
+tail."
+  (let ((trim (string-trim-left text)))
+    (when (string-match
+           "\\`\\(?:exact\\|refine\\|apply\\)\\_>\\s-+\\(.+\\)\\'"
+           trim)
+      (lean4-indent--line-application-head-kind (match-string 1 trim)))))
 
 (defun lean4-indent--line-leading-angle-paren-col (text)
   "Return the column of the leading '(' in a line starting with `⟨(`, or nil."
@@ -1071,19 +1083,15 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
           (+ prev-indent step))
          (with-indent with-indent)
          (t prev-indent))))
-     ;; Namespace/section blocks keep one-level indent
+     ;; `mutual` bodies indent one level.
      ((and prev-pos
-           (or (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-namespace)
-               (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-section)
-               (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-public-section)
-               (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-mutual)))
+           (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-mutual))
       (+ prev-indent step))
      ;; 2.5) Top-level anchors inside mutual indent one step.
      ((and mutual-indent (lean4-indent--line-top-level-anchor-p current-text))
       (+ mutual-indent step))
      ;; 3) Top-level snap
-     ((and (lean4-indent--line-top-level-anchor-p current-text)
-           (not (lean4-indent--inside-namespace-or-section-p (point))))
+     ((lean4-indent--line-top-level-anchor-p current-text)
       0)
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
@@ -1185,6 +1193,14 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            (not (and starts-with-paren
                      prev-pos
                      prev-closes-paren))
+           (lean4-indent--line-starts-structured-term-p current-text))
+      (+ prev-indent step))
+     ;; 7.6) Continue the multiline term argument of an `exact`/`refine`/`apply` tactic.
+     ((and (or anchor-by-block-p
+               (and prev-top-level-body-indent
+                    (= prev-indent prev-top-level-body-indent)))
+           (memq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
+                 '(atom application))
            (lean4-indent--line-starts-structured-term-p current-text))
       (+ prev-indent step))
      ;; 8) Anonymous literal ⟨…⟩
@@ -1319,11 +1335,19 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
            (or prev-closes-paren
                (lean4-indent--line-contains-balanced-bracket-p prev-pos)))
       anchor-indent)
-     ;; 11.75) Blank lines after a first-level declaration body snap back to the declaration.
+     ;; 11.75) Blank lines inside tactic blocks keep the surrounding tactic indent.
+     ((and (lean4-indent--line-blank-p current-text)
+           anchor-by-block-p
+           (> prev-indent anchor-indent)
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma)
+           (not prev-body-intro-kind))
+      prev-indent)
+     ;; 11.8) Blank lines after a first-level non-tactic declaration body snap back.
      ((and (lean4-indent--line-blank-p current-text)
            anchor-pos
            (lean4-indent--line-top-level-anchor-p anchor-text)
-           (memq anchor-body-intro-kind '(coloneq coloneq-by))
+           (eq anchor-body-intro-kind 'coloneq)
            (= prev-indent (+ anchor-indent step))
            (not prev-line-ends-with-op)
            (not prev-line-ends-with-comma)
