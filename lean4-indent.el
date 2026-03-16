@@ -450,6 +450,12 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-anchor-p (text)
   (string-match-p lean4-indent--top-level-anchors-re text))
 
+(defun lean4-indent--line-top-level-declaration-head-p (text)
+  "Return non-nil if TEXT starts a top-level declaration header."
+  (string-match-p
+   "\\`[ \t]*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
+   text))
+
 (defun lean4-indent--line-starts-with-paren-p (text)
   (lean4-indent--starts-with-p text lean4-indent--re-starts-paren))
 
@@ -1123,7 +1129,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
       anchor-indent)
      ;; Continuation of top-level declaration binders before the colon.
      ((and prev-pos
-           (lean4-indent--line-top-level-anchor-p prev-text)
+           (lean4-indent--line-top-level-declaration-head-p prev-text)
            (not prev-line-has-outer-coloneq)
            (not (memq prev-body-intro-kind '(colon coloneq coloneq-by by where))))
       (+ prev-indent (* 2 step)))

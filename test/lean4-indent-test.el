@@ -1735,6 +1735,11 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "")))
 
+(ert-deftest lean4-indent--newline-after-section-stays-flush-left ()
+  (lean4-test-with-indent-buffer "section Pointwise\n"
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "")))
+
 (ert-deftest lean4-indent--newline-after-single-line-top-level-decl-dedents ()
   (lean4-test-with-indent-buffer "example : Nat := 2\n"
     (lean4-test--goto-eob)
