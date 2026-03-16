@@ -530,6 +530,22 @@ tail."
   (when (string-match "\\`[ \t]*⟨(" text)
     (1- (match-end 0))))
 
+(defun lean4-indent--next-significant-line-top-level-anchor-p ()
+  "Return non-nil if the next nonblank, noncomment line is a top-level anchor."
+  (save-excursion
+    (let ((found nil)
+          (done nil))
+      (while (and (not done) (not (eobp)))
+        (forward-line 1)
+        (let ((text (lean4-indent--line-text (point))))
+          (cond
+           ((or (lean4-indent--line-blank-p text)
+                (lean4-indent--comment-line-p (point))))
+           (t
+            (setq done t)
+            (setq found (lean4-indent--line-top-level-anchor-p text))))))
+      found)))
+
 (defun lean4-indent--branch-line-p (text)
   "Return non-nil if TEXT is a branch line."
   (lean4-indent--starts-with-p text lean4-indent--re-starts-branch))
@@ -1060,6 +1076,15 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
      ;; 1) Comment continuation
      ((and prev-comment-p current-comment-p)
       prev-indent)
+     ;; 1.25) A top-level doc comment after a blank line stays flush-left.
+     ((and current-comment-p
+           prev-pos
+           (string-match-p "\\`[ \t]*/--" current-text)
+           (save-excursion
+             (forward-line -1)
+             (lean4-indent--line-blank-p (lean4-indent--line-text (point))))
+           (lean4-indent--next-significant-line-top-level-anchor-p))
+      0)
      ;; 1.5) Lines starting with := continue previous field alignment.
      ((lean4-indent--starts-with-p current-text ":=")
       prev-indent)
@@ -1383,16 +1408,25 @@ accepted.  Outside tactic blocks this returns nil."
                (not (lean4-indent--line-top-level-anchor-p current-text))))
          (prev-pos (lean4-indent--prev-nonblank))
          (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+         (step lean4-indent-offset)
          (anchor
           (lean4-indent--find-enclosing-body-intro-anchor
            prev-pos prev-indent '(by coloneq-by)))
          (anchor-pos (car-safe anchor))
-         (anchor-indent (if anchor (cdr anchor) 0)))
-    (and current-tactic-body-line-p
-         anchor-pos
-         (> current 0)
-         (<= anchor-indent current)
-         (<= current computed))))
+         (anchor-indent (if anchor (cdr anchor) 0))
+         (prev-top-level-body-indent
+          (and prev-pos
+               (lean4-indent--top-level-anchor-body-indent prev-pos step))))
+    (or (and current-tactic-body-line-p
+             anchor-pos
+             (> current 0)
+             (<= anchor-indent current)
+             (<= current computed))
+        (and current-tactic-body-line-p
+             (lean4-indent--focus-dot-line-p current-text)
+             prev-top-level-body-indent
+             (= current prev-top-level-body-indent)
+             (<= current computed)))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."

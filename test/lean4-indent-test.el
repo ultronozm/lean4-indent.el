@@ -270,6 +270,31 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         (indent-region (point-min) (point-max))
         (should (equal (buffer-string) before))))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-doc-and-bullets ()
+  (let ((contents
+         (concat
+          "theorem mul_toSubmodule_le (S T : Subalgebra R A) :\n"
+          "    Subalgebra.toSubmodule S * Subalgebra.toSubmodule T ≤ Subalgebra.toSubmodule (S ⊔ T) := by\n"
+          "  rw [Submodule.mul_le]\n"
+          "  intro y hy z hz\n"
+          "  simp only [mem_toSubmodule]\n"
+          "  exact mul_mem (Algebra.mem_sup_left hy) (Algebra.mem_sup_right hz)\n"
+          "\n"
+          "/-- As submodules, subalgebras are idempotent. -/\n"
+          "@[simp]\n"
+          "theorem isIdempotentElem_toSubmodule (S : Subalgebra R A) :\n"
+          "    IsIdempotentElem S.toSubmodule := by\n"
+          "  apply le_antisymm\n"
+          "  · refine (mul_toSubmodule_le _ _).trans_eq ?_\n"
+          "    rw [sup_idem]\n"
+          "  · intro x hx1\n"
+          "    rw [← mul_one x]\n"
+          "    exact Submodule.mul_mem_mul hx1 (show (1 : A) ∈ S from one_mem S)\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
 (ert-deftest lean4-indent--non-tab-reindent-still-normalizes-term-code ()
   (lean4-test-with-indent-buffer
       (concat
