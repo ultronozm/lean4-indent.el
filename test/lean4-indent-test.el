@@ -295,6 +295,22 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         (indent-region (point-min) (point-max))
         (should (equal (buffer-string) before))))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-doc-before-protected-def ()
+  (let ((contents
+         (concat
+          "variable {R' : Type*} [Semiring R'] [MulSemiringAction R' A] [SMulCommClass R' R A]\n\n"
+          "/-- The action on a subalgebra corresponding to applying the action to every element.\n\n"
+          "This is available as an instance in the `Pointwise` locale. -/\n"
+          "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where\n"
+          "  smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)\n"
+          "  one_smul S := (congr_arg (fun f => S.map f) (AlgHom.ext <| one_smul R')).trans S.map_id\n"
+          "  mul_smul _a₁ _a₂ S :=\n"
+          "    (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
 (ert-deftest lean4-indent--indent-region-preserves-mathlib-mul-to-submodule ()
   (let ((contents
          (concat

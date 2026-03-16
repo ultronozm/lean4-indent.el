@@ -104,12 +104,10 @@ current line."
   "Keywords treated as simp-like tactics.")
 
 (defconst lean4-indent--top-level-anchors
-  '("attribute" "compile_inductive" "def" "instance" "partial_fixpoint"
-    "theorem" "lemma" "example" "structure" "inductive" "class" "abbrev"
-    "macro" "syntax" "notation" "set_option" "open" "universe" "variable" "@["
-    "scoped["
+  '("attribute" "compile_inductive" "set_option" "open" "universe" "variable"
+    "@[" "scoped["
     "namespace" "section" "public section")
-  "Top-level anchors that snap to column 0 when not nested.")
+  "Non-declaration top-level anchors that snap to column 0 when not nested.")
 
 (defconst lean4-indent--top-level-anchors-re
   (concat "\\`[ \t]*\\(?:"
@@ -448,14 +446,15 @@ Return a symbol such as `colon', `coloneq', `by', or
   (and (lean4-indent--line-ends-with-op-p text)
        (not (lean4-indent--line-body-intro-kind text))))
 
-(defun lean4-indent--line-top-level-anchor-p (text)
-  (string-match-p lean4-indent--top-level-anchors-re text))
-
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
   (string-match-p
-   "\\`[ \t]*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
+   "\\`[ \t]*\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
    text))
+
+(defun lean4-indent--line-top-level-anchor-p (text)
+  (or (lean4-indent--line-top-level-declaration-head-p text)
+      (string-match-p lean4-indent--top-level-anchors-re text)))
 
 (defun lean4-indent--line-top-level-binder-head-kind (text)
   "Classify a top-level binder head line TEXT.
@@ -566,6 +565,22 @@ tail."
           (cond
            ((or (lean4-indent--line-blank-p text)
                 (lean4-indent--comment-line-p (point))))
+           (t
+            (setq done t)
+            (setq found (lean4-indent--line-top-level-anchor-p text))))))
+      found)))
+
+(defun lean4-indent--next-significant-noncomment-line-top-level-anchor-p ()
+  "Return non-nil if the next significant non-comment line is top-level."
+  (save-excursion
+    (let ((found nil)
+          (done nil))
+      (while (and (not done) (not (eobp)))
+        (forward-line 1)
+        (let ((text (lean4-indent--line-text (point))))
+          (cond
+           ((lean4-indent--line-blank-p text))
+           ((lean4-indent--comment-line-p (point)))
            (t
             (setq done t)
             (setq found (lean4-indent--line-top-level-anchor-p text))))))
@@ -1136,7 +1151,7 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
            (save-excursion
              (forward-line -1)
              (lean4-indent--line-blank-p (lean4-indent--line-text (point))))
-           (lean4-indent--next-significant-line-top-level-anchor-p))
+           (lean4-indent--next-significant-noncomment-line-top-level-anchor-p))
       0)
      ;; 1.5) Lines starting with := continue previous field alignment.
      ((lean4-indent--starts-with-p current-text ":=")
