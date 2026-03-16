@@ -933,20 +933,25 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
         (when (lean4-indent--line-top-level-declaration-head-p top-text)
           (save-excursion
             (goto-char top)
-            (catch 'found
+            (let ((fallback nil))
               (while (<= (point) start-pos)
                 (let ((text (lean4-indent--line-text (point))))
                   (unless (or (lean4-indent--line-blank-p text)
                               (lean4-indent--comment-line-p (point)))
                     (when (> (point) top)
                       (when (lean4-indent--line-top-level-anchor-p text)
-                        (throw 'found nil)))
+                        (setq fallback nil)
+                        (goto-char (1+ start-pos))))
                     (let ((kind (lean4-indent--line-body-intro-kind
                                  (lean4-indent--line-text-no-comment (point)))))
-                      (when kind
-                        (throw 'found kind)))))
+                      (cond
+                       ((memq kind '(coloneq-by coloneq by where))
+                        (setq fallback kind)
+                        (goto-char (1+ start-pos)))
+                       ((and kind (not fallback))
+                        (setq fallback kind))))))
                 (forward-line 1))
-              nil)))))))
+              fallback)))))))
 
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
@@ -1111,6 +1116,9 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
          (prev-closes-paren (and prev-pos (lean4-indent--line-closes-paren-p prev-pos)))
          (prev-starts-with-paren-closed
           (and prev-pos (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
+         (top-level-body-intro-kind
+          (and prev-pos
+               (lean4-indent--top-level-declaration-body-intro-kind prev-pos)))
          (nested-by-candidate-p
           (and prev-pos
                anchor-pos
@@ -1130,6 +1138,7 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
           (and (not prev-have-suffices-p)
                (not prev-starts-with-calc-step)
                (not anchor-starts-calc)
+               (not (eq top-level-body-intro-kind 'coloneq-by))
                (not (eq anchor-body-intro-kind 'where))
                (or (and anchor-pos
                         (lean4-indent--line-top-level-anchor-p anchor-text)
