@@ -1326,6 +1326,16 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
                      prev-closes-paren))
            (lean4-indent--line-starts-structured-term-p current-text))
       (+ prev-indent step))
+     ;; 7.55) Continue sibling parenthesized arguments after an inline closed argument.
+     ((and starts-with-paren
+           (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 '(application))
+           (string-match-p "[])}⟩]\\s-*$" prev-text)
+           (not prev-closes-paren)
+           (not prev-line-ends-with-comma)
+           (not prev-line-ends-with-op)
+           (not prev-term-continuation-p))
+      (+ prev-indent step))
      ;; 7.6) Continue the multiline term argument of an `exact`/`refine`/`apply` tactic.
      ((and (or anchor-by-block-p
                (and prev-top-level-body-indent
@@ -1574,6 +1584,8 @@ accepted.  Outside tactic blocks this returns nil."
                   ((and tabp (eq last-command 'indent-for-tab-command))
                    (lean4-indent--cycle-indent computed current))
                   ((and (not tabp)
+                        (> current 0)
+                        (< current computed)
                         (lean4-indent--acceptable-tactic-indent-p computed current))
                    current)
                   (t computed)))
