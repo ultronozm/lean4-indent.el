@@ -1621,6 +1621,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
   mul_smul _a₁ _a₂ S :=
     (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm")
 
+(lean4-define-final-line-indent-test
+ lean4-indent--protected-def-where-multiline-field-body-after-variable
+ "variable {R' : Type*} [Semiring R'] [MulSemiringAction R' A] [SMulCommClass R' R A]
+
+protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
+  smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)
+  one_smul S := (congr_arg (fun f => S.map f) (AlgHom.ext <| one_smul R')).trans S.map_id
+  mul_smul _a₁ _a₂ S :=
+    (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm")
+
 (ert-deftest lean4-indent--multiline-have-with-body ()
   (lean4-test-with-indent-buffer
       (concat

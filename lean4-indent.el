@@ -1104,6 +1104,7 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
           (and (not prev-have-suffices-p)
                (not prev-starts-with-calc-step)
                (not anchor-starts-calc)
+               (not (eq anchor-body-intro-kind 'where))
                (or (and anchor-pos
                         (lean4-indent--line-top-level-anchor-p anchor-text)
                         (+ anchor-indent step))
