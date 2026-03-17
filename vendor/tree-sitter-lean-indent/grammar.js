@@ -73,6 +73,7 @@ module.exports = grammar({
     [$._atom, $._name],
     [$._binding_body, $.tactic_have],
     [$.mutual, $.end],
+    [$._expression, $._tactic],
   ],
 
   rules: {
@@ -686,6 +687,7 @@ module.exports = grammar({
     // None of these appear in `_expression`.
 
     _tactic: $ => choice(
+      $.match,
       $.tactic_apply,
       $.tactic_focus,
       $.tactic_case,

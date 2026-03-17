@@ -950,5 +950,28 @@ termination_by
                    "termination_by"))
     (should (member "termination_by" (lean4-ts-test--ancestor-types-at-line 4)))))
 
+(ert-deftest lean4-indent-ts--tactic-match-alt-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  match h with
+  | _ => exact 0"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-match-alt-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  match h with
+  | _ =>
+    exact 0"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-match-parse-regression ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  match h with
+  | _ => exact 0"
+    (should (member "match" (lean4-ts-test--ancestor-types-at-line 2)))
+    (should (member "match_arm" (lean4-ts-test--ancestor-types-at-line 3)))))
+
 (provide 'lean4-indent-ts-test)
 ;;; lean4-indent-ts-test.el ends here
