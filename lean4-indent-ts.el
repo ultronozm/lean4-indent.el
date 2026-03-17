@@ -379,6 +379,22 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line decl)))
       (+ (lean4-indent-ts--node-indent decl) lean4-indent-offset))))
 
+(defun lean4-indent-ts--declaration-header-continuation-indent (node)
+  "Return indentation for wrapped declaration header continuation lines, or nil."
+  (let* ((decl0 (lean4-indent-ts--ancestor-type node
+                                                (append '("declaration")
+                                                        lean4-indent-ts--decl-types)))
+         (decl (and decl0 (lean4-indent-ts--unwrap-declaration decl0)))
+         (body (and decl (treesit-node-child-by-field-name decl "body")))
+         (current-line (lean4-indent-ts--current-line)))
+    (when (and decl body
+               (> current-line (lean4-indent-ts--node-start-line decl))
+               (string-match-p "\\(:=\\|\\_<where\\_>\\)" (lean4-indent-ts--line-text))
+               (or (< current-line (lean4-indent-ts--node-start-line body))
+                   (and (= current-line (lean4-indent-ts--node-start-line body))
+                        (< (lean4-indent-ts--line-start-pos) (treesit-node-start body)))))
+      (+ (lean4-indent-ts--node-indent decl) (* 2 lean4-indent-offset)))))
+
 (defun lean4-indent-ts--where-decl-indent (node)
   "Return indentation for a `where_decl' line or body, or nil."
   (let ((where-decl (lean4-indent-ts--ancestor-type node '("where_decl"))))
@@ -606,6 +622,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))
+       ((lean4-indent-ts--declaration-header-continuation-indent node))
        ((lean4-indent-ts--where-decl-indent node))
        ((lean4-indent-ts--match-alt-indent node))
        ((lean4-indent-ts--fun-body-indent node))
