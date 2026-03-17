@@ -191,6 +191,9 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defvar lean4-indent-ts--node-indent-cache nil
   "Dynamically bound cache of node indentation lookups during one indentation pass.")
 
+(defvar lean4-indent-ts--node-column-cache nil
+  "Dynamically bound cache of node start-column lookups during one indentation pass.")
+
 (defvar lean4-indent-ts--context nil
   "Dynamically bound per-line tree-sitter context for one indentation pass.")
 
@@ -285,6 +288,26 @@ Prefer the repo-local compiled vendored grammar when present."
           (when lean4-indent-ts--node-indent-cache
             (puthash node indent lean4-indent-ts--node-indent-cache))
           indent))))
+
+(defun lean4-indent-ts--node-column (node)
+  "Return NODE's starting column."
+  (if (not node)
+      0
+    (or (and lean4-indent-ts--node-column-cache
+             (gethash node lean4-indent-ts--node-column-cache))
+        (let ((column (save-excursion
+                        (goto-char (treesit-node-start node))
+                        (current-column))))
+          (when lean4-indent-ts--node-column-cache
+            (puthash node column lean4-indent-ts--node-column-cache))
+          column))))
+
+(defun lean4-indent-ts--same-node-p (a b)
+  "Return non-nil when tree-sitter nodes A and B describe the same range."
+  (and a b
+       (equal (treesit-node-type a) (treesit-node-type b))
+       (= (treesit-node-start a) (treesit-node-start b))
+       (= (treesit-node-end a) (treesit-node-end b))))
 
 (defun lean4-indent-ts--current-node ()
   "Return the smallest useful node at the current line."
@@ -550,6 +573,20 @@ Prefer the repo-local compiled vendored grammar when present."
        (= (lean4-indent-ts--node-start-line node)
           (lean4-indent-ts--current-line))))
 
+(defun lean4-indent-ts--previous-line-contains-comment-p ()
+  "Return non-nil when the previous line contains a Lean comment marker."
+  (save-excursion
+    (when (> (line-beginning-position) (point-min))
+      (forward-line -1)
+      (string-match-p "--\\|/-" (lean4-indent-ts--line-text)))))
+
+(defun lean4-indent-ts--anonymous-constructor-inline-first-field-p (ctor)
+  "Return non-nil when CTOR starts with its first field on the opener line."
+  (save-excursion
+    (goto-char (treesit-node-start ctor))
+    (search-forward "⟨" (line-end-position) t)
+    (looking-at-p "[^ \t\n\r]")))
+
 (defun lean4-indent-ts--top-level-continuation-indent (node)
   "Return indentation for a wrapped top-level command line, or nil."
   (let ((top (lean4-indent-ts--top-level-command node)))
@@ -605,7 +642,9 @@ Prefer the repo-local compiled vendored grammar when present."
                       (lean4-indent-ts--ancestor-type node '("where_decl")))))
     (when where-decl
       (let ((current-line (lean4-indent-ts--current-line))
-            (where-line (lean4-indent-ts--node-start-line where-decl)))
+            (where-line (lean4-indent-ts--node-start-line where-decl))
+            (decl-body (and lean4-indent-ts--context
+                            (lean4-indent-ts--context-get :decl-body))))
         (if (= current-line where-line)
             (let ((owner (or (and lean4-indent-ts--context
                                   (lean4-indent-ts--context-get :decl0))
@@ -615,7 +654,15 @@ Prefer the repo-local compiled vendored grammar when present."
                                    (append '("declaration")
                                            lean4-indent-ts--decl-types)))
                              (treesit-node-parent where-decl))))
-              (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))
+              (cond
+               ((lean4-indent-ts--same-node-p decl-body where-decl)
+                (lean4-indent-ts--node-indent where-decl))
+               ((and decl-body
+                     (< (lean4-indent-ts--node-start-line decl-body)
+                        current-line))
+                (+ (lean4-indent-ts--node-indent decl-body) lean4-indent-offset))
+               (t
+                (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
           (+ (lean4-indent-ts--node-indent where-decl) lean4-indent-offset))))))
 
 (defun lean4-indent-ts--fun-body-indent (node)
@@ -712,9 +759,10 @@ with that grouped application, not indent one step further."
                               (lean4-indent-ts--ancestor-type
                                expr '("tactic_apply"))))))
     (when expr
-      (if tactic-apply
-          (lean4-indent-ts--node-indent tactic-apply)
-        (+ (lean4-indent-ts--node-indent expr) lean4-indent-offset)))))
+      (unless (lean4-indent-ts--previous-line-contains-comment-p)
+        (if tactic-apply
+            (lean4-indent-ts--node-indent tactic-apply)
+          (+ (lean4-indent-ts--node-indent expr) lean4-indent-offset))))))
 
 (defun lean4-indent-ts--tactic-block-indent (node)
   "Return indentation for a tactic focus/case body line, or nil."
@@ -785,7 +833,13 @@ with that grouped application, not indent one step further."
     (when (and ctor
                (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line ctor)))
-      (1+ (lean4-indent-ts--node-indent ctor)))))
+      (cond
+       ((string-match-p "\\`[ \t]*⟩" (lean4-indent-ts--line-text))
+        (lean4-indent-ts--node-column ctor))
+       ((lean4-indent-ts--anonymous-constructor-inline-first-field-p ctor)
+        (1+ (lean4-indent-ts--node-column ctor)))
+       (t
+        (+ (lean4-indent-ts--node-indent ctor) lean4-indent-offset))))))
 
 (defun lean4-indent-ts--tactic-body-intro-indent (node)
   "Return indentation for multiline tactic body-intro nodes, or nil."
@@ -963,6 +1017,7 @@ with that grouped application, not indent one step further."
            (lean4-indent-ts--ancestor-chain-cache nil)
            (lean4-indent-ts--node-start-line-cache (make-hash-table :test 'eq))
            (lean4-indent-ts--node-indent-cache (make-hash-table :test 'eq))
+           (lean4-indent-ts--node-column-cache (make-hash-table :test 'eq))
            (lean4-indent-ts--ancestor-type-index nil)
            (lean4-indent-ts--ancestor-depth-index nil)
            (node (lean4-indent-ts--current-node)))
