@@ -142,10 +142,32 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   x"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--top-level-check-after-single-line-decl ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := 2
+
+#check Nat.recOn"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--where-field ()
   (lean4-ts-test-with-indent-buffer
       "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
   smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--structure-where-fields ()
+  (lean4-ts-test-with-indent-buffer
+      "structure Foo where
+  /-- doc -/
+  x : Nat
+  y : Nat"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--instance-where-fields ()
+  (lean4-ts-test-with-indent-buffer
+      "instance : Inhabited Nat where
+  default := 0
+  := 1"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--multiline-application-arguments ()
