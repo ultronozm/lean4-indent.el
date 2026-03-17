@@ -564,6 +564,30 @@ end Foo"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--do-if-let-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Nat := do
+  if let some x := y then
+    pure x
+  else
+    pure 0"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--do-if-let-else-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Nat := do
+  if let some x := y then
+    pure x
+  else
+    pure 0"
+    (lean4-ts-test--goto-line 5)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--do-try-body-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo : M Unit := do
@@ -575,6 +599,13 @@ end Foo"
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--do-while-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Unit := do
+  while h do
+    pure ()"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--do-match-arm-body-line ()
   (lean4-ts-test-with-indent-buffer
