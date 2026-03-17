@@ -80,6 +80,21 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]"
 scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--plain-attribute-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "attribute [simp] Foo.bar"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--hash-command-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "#check Nat.recOn"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--notation-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "notation:10000 x \"!\" => x"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--wrapped-theorem-body ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo (x : Nat) :
