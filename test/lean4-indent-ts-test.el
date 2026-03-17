@@ -66,6 +66,20 @@
 variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--wrapped-top-level-variable-line ()
+  (lean4-ts-test-with-indent-buffer
+      "variable {ι R : Type*} {S : ι → Type*} [CommSemiring R] [∀ i, Semiring (S i)] [∀ i, Algebra R (S i)]
+  {s : Set ι} {t t₁ t₂ : ∀ i, Subalgebra R (S i)} {x : ∀ i, S i}"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--scoped-attribute-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
+  smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)
+
+scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--wrapped-theorem-body ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo (x : Nat) :
@@ -107,6 +121,21 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]"
       "example : Nat :=
   match x with
   | 0 => 0"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--multiline-tactic-application-arguments ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  exact f
+    (fun a => t)
+    (fun b => u)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-focus-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  ·
+    exact t"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--adjoin-ext-parse-regression ()

@@ -100,6 +100,14 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("match_alt" "match_arm")
   "Node types representing a single `match` branch.")
 
+(defconst lean4-indent-ts--top-level-continuation-types
+  '("variable" "attribute")
+  "Top-level command node types whose wrapped lines indent one step.")
+
+(defconst lean4-indent-ts--tactic-block-types
+  '("tactic_focus" "tactic_case")
+  "Tactic nodes whose bodies indent one step.")
+
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
   (interactive)
@@ -211,13 +219,25 @@ Prefer the repo-local compiled vendored grammar when present."
 
 (defun lean4-indent-ts--inside-tactics-p (node)
   "Return non-nil when NODE is inside a `tactics' block."
-  (and node (lean4-indent-ts--ancestor-type node '("tactics"))))
+  (and node
+       (or (lean4-indent-ts--ancestor-type node '("by"))
+           (lean4-indent-ts--ancestor-type node '("tactics")))))
 
 (defun lean4-indent-ts--top-level-line-p (node)
   "Return non-nil when the current line starts a top-level command NODE."
   (and node
        (= (lean4-indent-ts--node-start-line node)
           (line-number-at-pos (line-beginning-position) t))))
+
+(defun lean4-indent-ts--top-level-continuation-indent (node)
+  "Return indentation for a wrapped top-level command line, or nil."
+  (let ((top (lean4-indent-ts--top-level-command node)))
+    (when (and top
+               (member (treesit-node-type top)
+                       lean4-indent-ts--top-level-continuation-types)
+               (> (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line top)))
+      (+ (lean4-indent-ts--node-indent top) lean4-indent-offset))))
 
 (defun lean4-indent-ts--declaration-body-indent (node)
   "Return declaration-body indentation for NODE, or nil."
@@ -272,6 +292,21 @@ Prefer the repo-local compiled vendored grammar when present."
             (lean4-indent-ts--node-indent match)
           (+ (lean4-indent-ts--node-indent match) lean4-indent-offset))))))
 
+(defun lean4-indent-ts--tactic-block-indent (node)
+  "Return indentation for a tactic focus/case body line, or nil."
+  (let ((block (lean4-indent-ts--ancestor-type node
+                                               lean4-indent-ts--tactic-block-types)))
+    (when (and block
+               (> (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line block)))
+      (+ (lean4-indent-ts--node-indent block) lean4-indent-offset))))
+
+(defun lean4-indent-ts--tactic-apply-argument-indent (node)
+  "Return indentation for multiline tactic arguments, or nil."
+  (when (and (lean4-indent-ts--inside-tactics-p node)
+             (lean4-indent-ts--ancestor-type node '("tactic_apply" "tactic_rewrite")))
+    (lean4-indent-ts--apply-argument-indent node)))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -287,12 +322,16 @@ Prefer the repo-local compiled vendored grammar when present."
       (cond
        ((or (lean4-indent-ts--line-blank-p)
             (lean4-indent-ts--line-comment-p)
-            (null node)
-            (lean4-indent-ts--inside-tactics-p node))
+            (null node))
         nil)
        ((let ((top (lean4-indent-ts--top-level-command node)))
           (and top (lean4-indent-ts--top-level-line-p top)))
         0)
+       ((lean4-indent-ts--tactic-block-indent node))
+       ((lean4-indent-ts--tactic-apply-argument-indent node))
+       ((lean4-indent-ts--inside-tactics-p node)
+        nil)
+       ((lean4-indent-ts--top-level-continuation-indent node))
        ((lean4-indent-ts--where-decl-indent node))
        ((lean4-indent-ts--match-alt-indent node))
        ((lean4-indent-ts--fun-body-indent node))
