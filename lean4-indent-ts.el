@@ -150,6 +150,18 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("macro_rule")
   "Node types representing a single `macro_rules` branch.")
 
+(defvar lean4-indent-ts--current-line-cache nil
+  "Dynamically bound current line number during one indentation pass.")
+
+(defvar lean4-indent-ts--ancestor-cache nil
+  "Dynamically bound cache of ancestor lookups during one indentation pass.")
+
+(defvar lean4-indent-ts--node-start-line-cache nil
+  "Dynamically bound cache of node start-line lookups during one indentation pass.")
+
+(defvar lean4-indent-ts--node-indent-cache nil
+  "Dynamically bound cache of node indentation lookups during one indentation pass.")
+
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
   (interactive)
@@ -202,15 +214,34 @@ Prefer the repo-local compiled vendored grammar when present."
   "Return line number at POS."
   (line-number-at-pos pos t))
 
+(defun lean4-indent-ts--current-line ()
+  "Return current line number, reusing per-call cache when available."
+  (or lean4-indent-ts--current-line-cache
+      (line-number-at-pos (line-beginning-position) t)))
+
 (defun lean4-indent-ts--node-start-line (node)
   "Return the line number where NODE starts."
-  (lean4-indent-ts--line-number (treesit-node-start node)))
+  (if (not node)
+      0
+    (or (and lean4-indent-ts--node-start-line-cache
+             (gethash node lean4-indent-ts--node-start-line-cache))
+        (let ((line (lean4-indent-ts--line-number (treesit-node-start node))))
+          (when lean4-indent-ts--node-start-line-cache
+            (puthash node line lean4-indent-ts--node-start-line-cache))
+          line))))
 
 (defun lean4-indent-ts--node-indent (node)
   "Return indentation column of NODE's starting line."
-  (save-excursion
-    (goto-char (treesit-node-start node))
-    (current-indentation)))
+  (if (not node)
+      0
+    (or (and lean4-indent-ts--node-indent-cache
+             (gethash node lean4-indent-ts--node-indent-cache))
+        (let ((indent (save-excursion
+                        (goto-char (treesit-node-start node))
+                        (current-indentation))))
+          (when lean4-indent-ts--node-indent-cache
+            (puthash node indent lean4-indent-ts--node-indent-cache))
+          indent))))
 
 (defun lean4-indent-ts--current-node ()
   "Return the smallest useful node at the current line."
@@ -232,13 +263,22 @@ Prefer the repo-local compiled vendored grammar when present."
 
 (defun lean4-indent-ts--ancestor-type (node types)
   "Return the nearest ancestor of NODE whose type is in TYPES."
-  (lean4-indent-ts--ancestor-where
-   node
-   (lambda (n) (member (treesit-node-type n) types))))
+  (if (not node)
+      nil
+    (let ((key (cons node types)))
+      (if (and lean4-indent-ts--ancestor-cache
+               (gethash key lean4-indent-ts--ancestor-cache))
+          (gethash key lean4-indent-ts--ancestor-cache)
+        (let ((found (lean4-indent-ts--ancestor-where
+                      node
+                      (lambda (n) (member (treesit-node-type n) types)))))
+          (when lean4-indent-ts--ancestor-cache
+            (puthash key found lean4-indent-ts--ancestor-cache))
+          found)))))
 
 (defun lean4-indent-ts--ancestor-type-starting-before-line (node types)
   "Return nearest ancestor of NODE in TYPES that starts before current line."
-  (let ((current-line (line-number-at-pos (line-beginning-position) t)))
+  (let ((current-line (lean4-indent-ts--current-line)))
     (lean4-indent-ts--ancestor-where
      node
      (lambda (n)
@@ -269,7 +309,7 @@ Prefer the repo-local compiled vendored grammar when present."
   "Return non-nil when the current line starts a top-level command NODE."
   (and node
        (= (lean4-indent-ts--node-start-line node)
-          (line-number-at-pos (line-beginning-position) t))))
+          (lean4-indent-ts--current-line))))
 
 (defun lean4-indent-ts--top-level-continuation-indent (node)
   "Return indentation for a wrapped top-level command line, or nil."
@@ -277,7 +317,7 @@ Prefer the repo-local compiled vendored grammar when present."
     (when (and top
                (member (treesit-node-type top)
                        lean4-indent-ts--top-level-continuation-types)
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line top)))
       (+ (lean4-indent-ts--node-indent top) lean4-indent-offset))))
 
@@ -287,7 +327,7 @@ Prefer the repo-local compiled vendored grammar when present."
          (decl (and decl0 (lean4-indent-ts--unwrap-declaration decl0)))
          (body (and decl (treesit-node-child-by-field-name decl "body"))))
     (when (and decl body
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line decl)))
       (+ (lean4-indent-ts--node-indent decl) lean4-indent-offset))))
 
@@ -295,7 +335,7 @@ Prefer the repo-local compiled vendored grammar when present."
   "Return indentation for a `where_decl' line or body, or nil."
   (let ((where-decl (lean4-indent-ts--ancestor-type node '("where_decl"))))
     (when where-decl
-      (let ((current-line (line-number-at-pos (line-beginning-position) t))
+      (let ((current-line (lean4-indent-ts--current-line))
             (where-line (lean4-indent-ts--node-start-line where-decl)))
         (if (= current-line where-line)
             (let ((owner (or (lean4-indent-ts--ancestor-type (treesit-node-parent where-decl)
@@ -310,7 +350,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let* ((fun (lean4-indent-ts--ancestor-type node '("fun")))
          (body (and fun (treesit-node-child-by-field-name fun "body"))))
     (when (and fun body
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line fun))
                (<= (treesit-node-start body) (line-beginning-position))
                (< (line-beginning-position) (treesit-node-end body)))
@@ -329,7 +369,7 @@ Prefer the repo-local compiled vendored grammar when present."
     (when alt
       (let ((match (or (lean4-indent-ts--ancestor-type alt '("match"))
                        alt)))
-        (if (= (line-number-at-pos (line-beginning-position) t)
+        (if (= (lean4-indent-ts--current-line)
                (lean4-indent-ts--node-start-line alt))
             (lean4-indent-ts--node-indent match)
           (+ (lean4-indent-ts--node-indent match) lean4-indent-offset))))))
@@ -339,7 +379,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let ((block (lean4-indent-ts--ancestor-type node
                                                lean4-indent-ts--tactic-block-types)))
     (when (and block
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line block)))
       (+ (lean4-indent-ts--node-indent block) lean4-indent-offset))))
 
@@ -356,7 +396,7 @@ Prefer the repo-local compiled vendored grammar when present."
       (let ((calc (or (lean4-indent-ts--ancestor-type (treesit-node-parent step)
                                                       '("tactic_calc"))
                       step)))
-        (if (= (line-number-at-pos (line-beginning-position) t)
+        (if (= (lean4-indent-ts--current-line)
                (lean4-indent-ts--node-start-line step))
             (+ (lean4-indent-ts--node-indent calc) lean4-indent-offset)
           (+ (lean4-indent-ts--node-indent step) lean4-indent-offset))))))
@@ -366,7 +406,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let ((binding (lean4-indent-ts--ancestor-type node
                                                  lean4-indent-ts--tactic-binding-types)))
     (when (and binding
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line binding)))
       (+ (lean4-indent-ts--node-indent binding) lean4-indent-offset))))
 
@@ -375,7 +415,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let ((config (lean4-indent-ts--ancestor-type node
                                                 lean4-indent-ts--tactic-config-types)))
     (when (and config
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line config)))
       (+ (lean4-indent-ts--node-indent config) lean4-indent-offset))))
 
@@ -384,7 +424,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let ((ctor (lean4-indent-ts--ancestor-type node
                                               lean4-indent-ts--constructor-types)))
     (when (and ctor
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line ctor)))
       (1+ (lean4-indent-ts--node-indent ctor)))))
 
@@ -393,7 +433,7 @@ Prefer the repo-local compiled vendored grammar when present."
   (let ((intro (lean4-indent-ts--ancestor-type node
                                                lean4-indent-ts--tactic-body-intro-types)))
     (when (and intro
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line intro)))
       (+ (lean4-indent-ts--node-indent intro) lean4-indent-offset))))
 
@@ -403,7 +443,7 @@ Prefer the repo-local compiled vendored grammar when present."
                                                  lean4-indent-ts--declaration-binding-types)))
     (when (and binding
                (not (lean4-indent-ts--ancestor-type node '("do")))
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line binding)))
       (+ (lean4-indent-ts--node-indent binding) lean4-indent-offset))))
 
@@ -419,7 +459,7 @@ Prefer the repo-local compiled vendored grammar when present."
           (and instance
                (treesit-node-child-by-field-name instance "extends"))))
     (when (and field
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line field)))
       (+ (if extends-instance
              (lean4-indent-ts--node-indent instance)
@@ -434,7 +474,7 @@ Prefer the repo-local compiled vendored grammar when present."
                       (treesit-node-parent ctor)
                       '("inductive" "class_inductive")))))
     (when (and ctor owner
-               (= (line-number-at-pos (line-beginning-position) t)
+               (= (lean4-indent-ts--current-line)
                  (lean4-indent-ts--node-start-line ctor)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
@@ -447,7 +487,7 @@ Prefer the repo-local compiled vendored grammar when present."
                       (treesit-node-parent field)
                       '("structure")))))
     (when (and field owner
-               (= (line-number-at-pos (line-beginning-position) t)
+               (= (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line field)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
@@ -458,7 +498,7 @@ Prefer the repo-local compiled vendored grammar when present."
                                                  "class_inductive"))))
     (when (and owner
                (string-match-p "\\`[ \t]*deriving\\_>" (lean4-indent-ts--line-text))
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line owner)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
@@ -470,7 +510,7 @@ Prefer the repo-local compiled vendored grammar when present."
                       (treesit-node-parent rule)
                       '("macro_rules")))))
     (when (and rule owner
-               (= (line-number-at-pos (line-beginning-position) t)
+               (= (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line rule)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
@@ -478,14 +518,19 @@ Prefer the repo-local compiled vendored grammar when present."
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
     (when (and intro
-               (> (line-number-at-pos (line-beginning-position) t)
+               (> (lean4-indent-ts--current-line)
                   (lean4-indent-ts--node-start-line intro)))
       (+ (lean4-indent-ts--node-indent intro) lean4-indent-offset))))
 
 (defun lean4-indent-ts--compute-indent ()
   "Return tree-sitter-based indentation for the current line, or nil."
   (when (lean4-indent-ts--available-p)
-    (let ((node (lean4-indent-ts--current-node)))
+    (let ((lean4-indent-ts--current-line-cache
+          (line-number-at-pos (line-beginning-position) t))
+          (lean4-indent-ts--ancestor-cache (make-hash-table :test 'equal))
+          (lean4-indent-ts--node-start-line-cache (make-hash-table :test 'eq))
+          (lean4-indent-ts--node-indent-cache (make-hash-table :test 'eq))
+          (node (lean4-indent-ts--current-node)))
       (cond
        ((or (lean4-indent-ts--line-blank-p)
             (lean4-indent-ts--line-comment-p)
