@@ -128,6 +128,18 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--structure-extends-field-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo :=
+  { base with
+    a :=
+      t
+    b := u }"
+    (lean4-ts-test--goto-line 4)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--iff-intro-second-lambda-line ()
   (lean4-ts-test-with-indent-buffer
       "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
@@ -268,6 +280,19 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   catch _ =>
     pure ()"
     (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--do-match-arm-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Nat := do
+  match x with
+  | 0 =>
+    pure 0
+  | n =>
+    pure n"
+    (lean4-ts-test--goto-line 4)
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))

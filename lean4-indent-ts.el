@@ -97,7 +97,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   "Node types representing multiline applications.")
 
 (defconst lean4-indent-ts--match-alt-types
-  '("match_alt" "match_arm")
+  '("match_alt" "match_arm" "do_match_arm")
   "Node types representing a single `match` branch.")
 
 (defconst lean4-indent-ts--top-level-continuation-types
@@ -395,12 +395,21 @@ Prefer the repo-local compiled vendored grammar when present."
 
 (defun lean4-indent-ts--field-assignment-indent (node)
   "Return indentation for multiline structure field bodies, or nil."
-  (let ((field (lean4-indent-ts--ancestor-type node
-                                               lean4-indent-ts--field-assignment-types)))
+  (let* ((field (lean4-indent-ts--ancestor-type node
+                                                lean4-indent-ts--field-assignment-types))
+         (instance (and field
+                        (lean4-indent-ts--ancestor-type
+                         (treesit-node-parent field)
+                         '("structure_instance"))))
+         (extends-instance
+          (and instance
+               (treesit-node-child-by-field-name instance "extends"))))
     (when (and field
                (> (line-number-at-pos (line-beginning-position) t)
                   (lean4-indent-ts--node-start-line field)))
-      (+ (lean4-indent-ts--node-indent field)
+      (+ (if extends-instance
+             (lean4-indent-ts--node-indent instance)
+           (lean4-indent-ts--node-indent field))
          (* 2 lean4-indent-offset)))))
 
 (defun lean4-indent-ts--body-intro-indent (node)
