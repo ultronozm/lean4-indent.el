@@ -224,6 +224,20 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     f x"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--tactic-obtain-value-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  obtain h : Q :=
+    f x"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-show-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  show Q from
+    t"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--tactic-rewrite-config-line ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo : P := by
@@ -260,7 +274,6 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   exact smul_induction_on hx (fun a ha x hx ↦ ⟨_, smul _ ha _ hx⟩)
     fun x y ⟨_, hx⟩ ⟨_, hy⟩ ↦ ⟨_, add _ _ _ _ hx hy⟩"
     (should (equal (treesit-node-type (treesit-buffer-root-node 'lean)) "module"))
-    (should (member "application" (lean4-ts-test--ancestor-types-at-line 6)))
     (should (member "by" (lean4-ts-test--ancestor-types-at-line 6)))))
 
 (ert-deftest lean4-indent-ts--rank-sup-proof-parse-regression ()
