@@ -89,7 +89,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   "Declaration node types that carry a `body' field.")
 
 (defconst lean4-indent-ts--body-intro-types
-  '("fun" "let" "have" "if" "if_then_else" "match")
+  '("fun" "if" "if_then_else" "match" "do")
   "Expression nodes whose body usually indents one step.")
 
 (defconst lean4-indent-ts--apply-types
@@ -127,6 +127,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--tactic-body-intro-types
   '("tactic_show")
   "Tactic nodes whose body continues on following lines.")
+
+(defconst lean4-indent-ts--declaration-binding-types
+  '("let" "have")
+  "Declaration-body bindings whose value may continue on following lines.")
 
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
@@ -375,6 +379,16 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line intro)))
       (+ (lean4-indent-ts--node-indent intro) lean4-indent-offset))))
 
+(defun lean4-indent-ts--declaration-binding-indent (node)
+  "Return indentation for multiline declaration `let`/`have` values, or nil."
+  (let ((binding (lean4-indent-ts--ancestor-type node
+                                                 lean4-indent-ts--declaration-binding-types)))
+    (when (and binding
+               (not (lean4-indent-ts--ancestor-type node '("do")))
+               (> (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line binding)))
+      (+ (lean4-indent-ts--node-indent binding) lean4-indent-offset))))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -402,6 +416,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--tactic-config-indent node))
        ((lean4-indent-ts--anonymous-constructor-indent node))
        ((lean4-indent-ts--tactic-body-intro-indent node))
+       ((lean4-indent-ts--declaration-binding-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))
