@@ -138,9 +138,32 @@ open Bar"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--top-level-public-section-line ()
+  (lean4-ts-test-with-indent-buffer
+      "public section Foo"
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--top-level-compile-inductive-line ()
+  (lean4-ts-test-with-indent-buffer
+      "compile_inductive Foo"
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--macro-rules-branch-line ()
   (lean4-ts-test-with-indent-buffer
       "macro_rules
+  | `(foo) => bar"
+    (lean4-ts-test--goto-line 2)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--scoped-macro-rules-branch-line ()
+  (lean4-ts-test-with-indent-buffer
+      "scoped macro_rules
   | `(foo) => bar"
     (lean4-ts-test--goto-line 2)
     (let ((before (lean4-ts-test--line-string)))

@@ -121,10 +121,12 @@ module.exports = grammar({
       )),
       // Other commands (no modifiers)
       $.namespace,
+      $.public_section,
       $.section,
       $.end,
       $.open,
       $.export,
+      $.compile_inductive,
       $.variable,
       $.universe,
       $.hash_command,
@@ -136,6 +138,9 @@ module.exports = grammar({
 
     // Namespace: `namespace Foo` or `namespace Foo.Bar.Baz`
     namespace: $ => seq('namespace', field('name', $._name)),
+
+    // `public section` or `public section Foo`
+    public_section: $ => seq('public', 'section', optional(field('name', $._name))),
 
     section: $ => seq('section', optional(field('name', $._name))),
 
@@ -153,6 +158,9 @@ module.exports = grammar({
         seq('in', $._command),
       )),
     ),
+
+    // `compile_inductive Foo`
+    compile_inductive: $ => seq('compile_inductive', field('name', $._name)),
 
     // `export Foo (bar baz)`
     export: $ => seq(

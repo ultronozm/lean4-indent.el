@@ -80,10 +80,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   "Repo-local directory for compiled Lean tree-sitter grammar libraries.")
 
 (defconst lean4-indent-ts--top-level-types
-  '("declaration" "section" "namespace" "open" "end" "variable" "attribute"
-    "hash_command" "macro_rules" "notation" "abbrev" "def" "example"
-    "instance" "structure" "theorem" "definition" "inductive"
-    "class_inductive")
+  '("declaration" "section" "public_section" "namespace" "open" "end"
+    "variable" "attribute" "hash_command" "compile_inductive"
+    "macro_rules" "notation" "abbrev" "def" "example" "instance"
+    "structure" "theorem" "definition" "inductive" "class_inductive")
   "Node types that act like flush-left top-level commands.")
 
 (defconst lean4-indent-ts--decl-types
