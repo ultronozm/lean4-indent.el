@@ -510,6 +510,20 @@ end Foo"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--declaration-else-if-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : Nat :=
+  if h then
+    0
+  else if h' then
+    1
+  else
+    2"
+    (lean4-ts-test--goto-line 5)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--declaration-do-body-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo : M Nat := do
@@ -522,6 +536,13 @@ end Foo"
       "def foo : M Unit := do
   for x in xs do
     pure ()"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-withref-do-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  withRef binder do
+    match binder with"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--do-unless-body-line ()
@@ -615,6 +636,22 @@ end Foo"
       "theorem foo : x = z := by
   calc
     x = y := by rfl"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--calc-operator-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  calc
+    True = True *
+      True"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--calc-step-proof-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  calc
+    foo = bar := by
+      simp"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--tactic-have-value-line ()
