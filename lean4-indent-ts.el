@@ -108,6 +108,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("tactic_focus" "tactic_case")
   "Tactic nodes whose bodies indent one step.")
 
+(defconst lean4-indent-ts--calc-step-types
+  '("calc_step")
+  "Node types representing a single `calc` step.")
+
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
   (interactive)
@@ -307,6 +311,18 @@ Prefer the repo-local compiled vendored grammar when present."
              (lean4-indent-ts--ancestor-type node '("tactic_apply" "tactic_rewrite")))
     (lean4-indent-ts--apply-argument-indent node)))
 
+(defun lean4-indent-ts--calc-step-indent (node)
+  "Return indentation for a `calc` step or its multiline body, or nil."
+  (let ((step (lean4-indent-ts--ancestor-type node lean4-indent-ts--calc-step-types)))
+    (when step
+      (let ((calc (or (lean4-indent-ts--ancestor-type (treesit-node-parent step)
+                                                      '("tactic_calc"))
+                      step)))
+        (if (= (line-number-at-pos (line-beginning-position) t)
+               (lean4-indent-ts--node-start-line step))
+            (+ (lean4-indent-ts--node-indent calc) lean4-indent-offset)
+          (+ (lean4-indent-ts--node-indent step) lean4-indent-offset))))))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -329,6 +345,7 @@ Prefer the repo-local compiled vendored grammar when present."
         0)
        ((lean4-indent-ts--tactic-block-indent node))
        ((lean4-indent-ts--tactic-apply-argument-indent node))
+       ((lean4-indent-ts--calc-step-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))
