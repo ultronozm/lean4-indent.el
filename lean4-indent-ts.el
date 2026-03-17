@@ -141,6 +141,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("constructor")
   "Node types representing inductive constructors.")
 
+(defconst lean4-indent-ts--structure-field-types
+  '("structure_field")
+  "Node types representing `structure ... where` field declarations.")
+
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
   (interactive)
@@ -426,8 +430,33 @@ Prefer the repo-local compiled vendored grammar when present."
                       '("inductive" "class_inductive")))))
     (when (and ctor owner
                (= (line-number-at-pos (line-beginning-position) t)
-                  (lean4-indent-ts--node-start-line ctor)))
+                 (lean4-indent-ts--node-start-line ctor)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
+
+(defun lean4-indent-ts--structure-field-indent (node)
+  "Return indentation for `structure ... where` fields, or nil."
+  (let* ((field (lean4-indent-ts--ancestor-type node
+                                                lean4-indent-ts--structure-field-types))
+         (owner (and field
+                     (lean4-indent-ts--ancestor-type
+                      (treesit-node-parent field)
+                      '("structure")))))
+    (when (and field owner
+               (= (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line field)))
+      (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
+
+(defun lean4-indent-ts--deriving-indent (node)
+  "Return indentation for declaration `deriving` lines, or nil."
+  (let* ((deriving (lean4-indent-ts--ancestor-type node '("deriving")))
+         (owner (and deriving
+                     (lean4-indent-ts--ancestor-type
+                      (treesit-node-parent deriving)
+                      '("structure" "inductive" "class_inductive")))))
+    (when (and deriving owner
+               (= (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line deriving)))
+      (lean4-indent-ts--node-indent owner))))
 
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
@@ -459,6 +488,8 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--declaration-binding-indent node))
        ((lean4-indent-ts--field-assignment-indent node))
        ((lean4-indent-ts--constructor-indent node))
+       ((lean4-indent-ts--structure-field-indent node))
+       ((lean4-indent-ts--deriving-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))
