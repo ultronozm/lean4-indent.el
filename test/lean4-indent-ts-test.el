@@ -117,6 +117,17 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     (Subring.closure_le.2 subset_adjoin : Subring.closure s ≤ (adjoin ℤ s).toSubring)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--structure-field-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo :=
+  { a :=
+      t
+    b := u }"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--iff-intro-second-lambda-line ()
   (lean4-ts-test-with-indent-buffer
       "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
@@ -204,6 +215,18 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--declaration-if-let-then-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : Nat :=
+  if let some x := y then
+    x
+  else
+    0"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--declaration-do-body-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo : M Nat := do
@@ -224,6 +247,19 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   match x with
   | 0 => 0"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--match-alt-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : Nat :=
+  match x with
+  | 0 =>
+    0
+  | n =>
+    n"
+    (lean4-ts-test--goto-line 4)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
 
 (ert-deftest lean4-indent-ts--multiline-tactic-application-arguments ()
   (lean4-ts-test-with-indent-buffer
