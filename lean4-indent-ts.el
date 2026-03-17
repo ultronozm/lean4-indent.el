@@ -156,6 +156,18 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defvar lean4-indent-ts--ancestor-cache nil
   "Dynamically bound cache of ancestor lookups during one indentation pass.")
 
+(defvar lean4-indent-ts--ancestor-chain-cache nil
+  "Dynamically bound ancestor chain for the current node during one indentation pass.")
+
+(defvar lean4-indent-ts--ancestor-type-index nil
+  "Dynamically bound index from node type to nearest ancestor during one indentation pass.")
+
+(defvar lean4-indent-ts--ancestor-depth-index nil
+  "Dynamically bound index from node type to nearest ancestor depth during one indentation pass.")
+
+(defvar-local lean4-indent-ts--buffer-ready nil
+  "Cached non-nil when Lean tree-sitter is usable in the current buffer.")
+
 (defvar lean4-indent-ts--node-start-line-cache nil
   "Dynamically bound cache of node start-line lookups during one indentation pass.")
 
@@ -184,10 +196,16 @@ Prefer the repo-local compiled vendored grammar when present."
 
 (defun lean4-indent-ts--available-p ()
   "Return non-nil when Lean tree-sitter parsing is available."
-  (and (featurep 'treesit)
-       (fboundp 'treesit-parser-create)
-       (let ((treesit-extra-load-path (lean4-indent-ts--extra-load-path)))
-         (treesit-ready-p 'lean t))))
+  (or lean4-indent-ts--buffer-ready
+      (setq lean4-indent-ts--buffer-ready
+            (and (featurep 'treesit)
+                 (fboundp 'treesit-parser-create)
+                 (or (cl-find-if (lambda (parser)
+                                   (eq (treesit-parser-language parser) 'lean))
+                                 (treesit-parser-list))
+                     (let ((treesit-extra-load-path
+                            (lean4-indent-ts--extra-load-path)))
+                       (treesit-ready-p 'lean t)))))))
 
 (defun lean4-indent-ts--line-start-pos ()
   "Return the first nonblank position on the current line, or line start."
@@ -251,15 +269,34 @@ Prefer the repo-local compiled vendored grammar when present."
       (setq node (treesit-node-parent node)))
     node))
 
+(defun lean4-indent-ts--ancestor-chain (node)
+  "Return NODE's ancestor chain from nearest to farthest."
+  (or lean4-indent-ts--ancestor-chain-cache
+      (let (chain)
+        (while node
+          (push node chain)
+          (setq node (treesit-node-parent node)))
+        (setq lean4-indent-ts--ancestor-chain-cache (nreverse chain)))))
+
+(defun lean4-indent-ts--ancestor-type-map (node)
+  "Return a map from type name to nearest ancestor for NODE."
+  (or lean4-indent-ts--ancestor-type-index
+      (let ((index (make-hash-table :test 'equal))
+            (depths (make-hash-table :test 'equal))
+            (depth 0))
+        (dolist (ancestor (lean4-indent-ts--ancestor-chain node))
+          (let ((type (treesit-node-type ancestor)))
+            (unless (gethash type index)
+              (puthash type ancestor index)
+              (puthash type depth depths)))
+          (setq depth (1+ depth)))
+        (setq lean4-indent-ts--ancestor-type-index index)
+        (setq lean4-indent-ts--ancestor-depth-index depths)
+        index)))
+
 (defun lean4-indent-ts--ancestor-where (node pred)
   "Return the nearest ancestor of NODE satisfying PRED."
-  (let ((cur node)
-        found)
-    (while (and cur (not found))
-      (when (funcall pred cur)
-        (setq found cur))
-      (setq cur (treesit-node-parent cur)))
-    found))
+  (cl-find-if pred (lean4-indent-ts--ancestor-chain node)))
 
 (defun lean4-indent-ts--ancestor-type (node types)
   "Return the nearest ancestor of NODE whose type is in TYPES."
@@ -269,9 +306,20 @@ Prefer the repo-local compiled vendored grammar when present."
       (if (and lean4-indent-ts--ancestor-cache
                (gethash key lean4-indent-ts--ancestor-cache))
           (gethash key lean4-indent-ts--ancestor-cache)
-        (let ((found (lean4-indent-ts--ancestor-where
-                      node
-                      (lambda (n) (member (treesit-node-type n) types)))))
+        (let* ((index (lean4-indent-ts--ancestor-type-map node))
+               (depths lean4-indent-ts--ancestor-depth-index)
+               (found
+                (cl-loop with best-node = nil
+                         with best-depth = nil
+                         for type in types
+                         for candidate = (gethash type index)
+                         for depth = (and candidate (gethash type depths))
+                         when (and candidate
+                                   (or (null best-depth)
+                                       (< depth best-depth)))
+                         do (setq best-node candidate
+                                  best-depth depth)
+                         finally return best-node)))
           (when lean4-indent-ts--ancestor-cache
             (puthash key found lean4-indent-ts--ancestor-cache))
           found)))))
@@ -528,8 +576,11 @@ Prefer the repo-local compiled vendored grammar when present."
     (let ((lean4-indent-ts--current-line-cache
           (line-number-at-pos (line-beginning-position) t))
           (lean4-indent-ts--ancestor-cache (make-hash-table :test 'equal))
+          (lean4-indent-ts--ancestor-chain-cache nil)
           (lean4-indent-ts--node-start-line-cache (make-hash-table :test 'eq))
           (lean4-indent-ts--node-indent-cache (make-hash-table :test 'eq))
+          (lean4-indent-ts--ancestor-type-index nil)
+          (lean4-indent-ts--ancestor-depth-index nil)
           (node (lean4-indent-ts--current-node)))
       (cond
        ((or (lean4-indent-ts--line-blank-p)
