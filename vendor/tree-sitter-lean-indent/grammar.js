@@ -539,13 +539,14 @@ module.exports = grammar({
     // - subscript modifier: `arr[i]!`, `arr[i]?`
     // - notation system: `n !` (user-defined, parsed as application)
 
-    // Lambda: `fun x => e` or `fun (x : T) => e` or `fun | pat => e | ...`
+    // Lambda: `fun x => e` or `fun x y : T => e` or `fun (x : T) => e`
+    // or `fun | pat => e | ...`
     // Body gets layout context so `let` bindings work properly
     fun: $ => prec.right(seq(
       choice('fun', 'λ'),
       choice(
         seq(
-          field('binders', repeat1(choice($._pattern, $._bracketed_binder))),
+          field('binders', repeat1(choice($._quantifier_binders, $._pattern))),
           '=>',
           $._layout_start,
           field('body', $._expression),

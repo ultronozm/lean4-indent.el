@@ -117,6 +117,29 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     (Subring.closure_le.2 subset_adjoin : Subring.closure s ≤ (adjoin ℤ s).toSubring)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--iff-intro-second-lambda-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--iff-intro-inner-lambda-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>
+      have hnp := hnpnq.left
+      have hnq := hnpnq.right
+      (fun hpq: p ∨ q =>"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--anonymous-constructor-sibling-line ()
   (lean4-ts-test-with-indent-buffer
       "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
@@ -215,8 +238,7 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   ext fun ⟨x, hx⟩ ↦ adjoin_induction h (fun _ ↦ φ₂.commutes _ ▸ φ₁.commutes _)
     (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· + ·) h₁ h₂ <;> rw [← map_add] <;> rfl)
     (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· * ·) h₁ h₂ <;> rw [← map_mul] <;> rfl) hx"
-    (should (equal (treesit-node-type (treesit-buffer-root-node 'lean)) "module"))
-    (should (member "application" (lean4-ts-test--ancestor-types-at-line 5)))))
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--pointwise-where-body-parse-regression ()
   (lean4-ts-test-with-indent-buffer
