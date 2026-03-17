@@ -85,6 +85,33 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
       "attribute [simp] Foo.bar"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--attribute-after-blank-line ()
+  (lean4-ts-test-with-indent-buffer
+      "open Pointwise
+
+@[simp, norm_cast]"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--top-level-doc-comment-line ()
+  (lean4-ts-test-with-indent-buffer
+      "/-- doc -/
+def foo : Nat := 0"
+    (lean4-ts-test--goto-line 1)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--doc-comment-after-blank-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : Nat := 0
+
+/-- doc -/
+def bar : Nat := 1"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--hash-command-top-level-line ()
   (lean4-ts-test-with-indent-buffer
       "#check Nat.recOn"
