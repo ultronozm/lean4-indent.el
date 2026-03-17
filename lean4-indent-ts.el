@@ -99,6 +99,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("apply" "application")
   "Node types representing multiline applications.")
 
+(defconst lean4-indent-ts--binary-expression-types
+  '("binary_expression")
+  "Node types representing multiline binary operator expressions.")
+
 (defconst lean4-indent-ts--match-alt-types
   '("match_alt" "match_arm" "do_match_arm")
   "Node types representing a single `match` branch.")
@@ -439,6 +443,18 @@ Prefer the repo-local compiled vendored grammar when present."
             (lean4-indent-ts--node-indent match)
           (+ (lean4-indent-ts--node-indent match) lean4-indent-offset))))))
 
+(defun lean4-indent-ts--binary-expression-indent (node)
+  "Return indentation for a multiline binary expression, or nil."
+  (let* ((expr (lean4-indent-ts--ancestor-type-starting-before-line
+                node lean4-indent-ts--binary-expression-types))
+         (tactic-apply (and expr
+                            (lean4-indent-ts--ancestor-type
+                             expr '("tactic_apply")))))
+    (when expr
+      (if tactic-apply
+          (lean4-indent-ts--node-indent tactic-apply)
+        (+ (lean4-indent-ts--node-indent expr) lean4-indent-offset)))))
+
 (defun lean4-indent-ts--tactic-block-indent (node)
   "Return indentation for a tactic focus/case body line, or nil."
   (let ((block (lean4-indent-ts--ancestor-type node
@@ -620,6 +636,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--structure-field-indent node))
        ((lean4-indent-ts--deriving-indent node))
        ((lean4-indent-ts--macro-rule-indent node))
+       ((lean4-indent-ts--binary-expression-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))

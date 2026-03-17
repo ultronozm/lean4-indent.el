@@ -209,6 +209,37 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     fun n ih => ih"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--binary-and-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  have h : True := by
+    exact True ∧
+    True"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--binary-iso-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  have h : True := by
+    exact True ≅
+    True"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--binary-equiv-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  have h : True := by
+    exact True ≃
+    True"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--binary-mul-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo :=
+  a *
+    b"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--paren-led-sibling-application-arguments ()
   (lean4-ts-test-with-indent-buffer
       "example : Nat :=
