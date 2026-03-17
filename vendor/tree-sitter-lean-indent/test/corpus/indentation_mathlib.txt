@@ -1,0 +1,172 @@
+=========================
+Indented Theorem Siblings
+=========================
+
+theorem foo : P :=
+  g h
+    (fun a => t)
+    (fun b => u) x
+
+---
+
+(module
+  (definition
+    name: (identifier)
+    type: (identifier)
+    body: (application
+      name: (application
+        name: (application
+          name: (application
+            name: (identifier)
+            arguments: (identifier))
+          arguments: (parenthesized
+            (fun
+              binders: (identifier)
+              body: (identifier))))
+        arguments: (parenthesized
+          (fun
+            binders: (identifier)
+            body: (identifier))))
+      arguments: (identifier))))
+
+==========================
+Where Body Field Alignment
+==========================
+
+protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
+  smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)
+  one_smul S := (congr_arg (fun f => S.map f) (AlgHom.ext <| one_smul R')).trans S.map_id
+  mul_smul _a₁ _a₂ S :=
+    (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm
+
+---
+
+(module
+  (definition
+    name: (identifier)
+    type: (application
+      name: (application
+        name: (identifier)
+        arguments: (identifier))
+      arguments: (parenthesized
+        (application
+          name: (application
+            name: (identifier)
+            arguments: (identifier))
+          arguments: (identifier))))
+    body: (where_decl
+      name: (identifier)
+      binders: (identifier)
+      binders: (identifier)
+      body: (application
+        name: (projection
+          term: (identifier)
+          name: (identifier))
+        arguments: (parenthesized
+          (application
+            name: (application
+              name: (application
+                name: (projection
+                  term: (identifier)
+                  name: (identifier))
+                arguments: (hole))
+              arguments: (hole))
+            arguments: (identifier)))))
+    body: (where_decl
+      name: (identifier)
+      binders: (identifier)
+      body: (projection
+        term: (application
+          name: (projection
+            term: (parenthesized
+              (application
+                name: (application
+                  name: (identifier)
+                  arguments: (parenthesized
+                    (fun
+                      binders: (identifier)
+                      body: (application
+                        name: (projection
+                          term: (identifier)
+                          name: (identifier))
+                        arguments: (identifier)))))
+                arguments: (parenthesized
+                  (application
+                    name: (binary_expression
+                      left: (projection
+                        term: (identifier)
+                        name: (identifier))
+                      right: (identifier))
+                    arguments: (identifier)))))
+            name: (identifier))
+          arguments: (identifier))
+        name: (identifier)))
+    body: (where_decl
+      name: (identifier)
+      binders: (identifier)
+      binders: (identifier)
+      binders: (identifier)
+      body: (projection
+        term: (application
+          name: (projection
+            term: (parenthesized
+              (application
+                name: (application
+                  name: (identifier)
+                  arguments: (parenthesized
+                    (fun
+                      binders: (identifier)
+                      body: (application
+                        name: (projection
+                          term: (identifier)
+                          name: (identifier))
+                        arguments: (identifier)))))
+                arguments: (parenthesized
+                  (application
+                    name: (application
+                      name: (binary_expression
+                        left: (projection
+                          term: (identifier)
+                          name: (identifier))
+                        right: (identifier))
+                      arguments: (hole))
+                    arguments: (hole)))))
+            name: (identifier))
+          arguments: (parenthesized
+            (application
+              name: (application
+                name: (projection
+                  term: (identifier)
+                  name: (identifier))
+                arguments: (hole))
+              arguments: (hole))))
+        name: (identifier)))))
+
+==================================
+Tactic-Term Multiline Application
+==================================
+
+theorem foo : P := by
+  exact f (fun a => t)
+    (fun b => u)
+
+---
+
+(module
+  (definition
+    name: (identifier)
+    type: (identifier)
+    body: (by
+      (tactic_apply
+        tactic: (identifier)
+        arg: (application
+          name: (application
+            name: (identifier)
+            arguments: (parenthesized
+              (fun
+                binders: (identifier)
+                body: (identifier))))
+          arguments: (parenthesized
+            (fun
+              binders: (identifier)
+              body: (identifier))))))))

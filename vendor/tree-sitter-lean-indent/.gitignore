@@ -1,0 +1,8 @@
+/target
+# Too big
+# src/parser.c
+src/*.json
+result
+.direnv/
+tree-sitter-lean.so
+.pre-commit-config.yaml

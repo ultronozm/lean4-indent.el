@@ -1,0 +1,65 @@
+=====================================
+Simple import
+=====================================
+
+import Lean
+
+---
+
+(module
+  (import
+    module: (identifier)))
+
+=====================================
+Dotted import path
+=====================================
+
+import LeanPrism.Protocol
+
+---
+
+(module
+  (import
+    module: (projection
+      term: (identifier)
+      name: (identifier))))
+
+=====================================
+Deep nested import path
+=====================================
+
+import LeanPrism.SemanticTableau.InfoTreeParser
+
+---
+
+(module
+  (import
+    module: (projection
+      term: (projection
+        term: (identifier)
+        name: (identifier))
+      name: (identifier))))
+
+=====================================
+Multiple imports
+=====================================
+
+import Lean
+import LeanPrism.Protocol
+import LeanPrism.SemanticTableau.InfoTreeParser
+
+---
+
+(module
+  (import
+    module: (identifier))
+  (import
+    module: (projection
+      term: (identifier)
+      name: (identifier)))
+  (import
+    module: (projection
+      term: (projection
+        term: (identifier)
+        name: (identifier))
+      name: (identifier))))
