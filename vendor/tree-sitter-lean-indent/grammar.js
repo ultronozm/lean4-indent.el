@@ -74,6 +74,8 @@ module.exports = grammar({
     [$._binding_body, $.tactic_have],
     [$.mutual, $.end],
     [$._expression, $._tactic],
+    [$.tactic_if, $.tactic_apply],
+    [$.tactic_if_let, $.tactic_apply],
   ],
 
   rules: {
@@ -694,6 +696,8 @@ module.exports = grammar({
       $.tactic_rewrite,
       $.tactic_have,
       $.tactic_let,
+      $.tactic_if,
+      $.tactic_if_let,
       $.tactic_show,
       $.tactic_calc,
     ),
@@ -756,6 +760,36 @@ module.exports = grammar({
       optional($._type_spec),
       ':=',
       field('value', $._expression),
+    )),
+
+    tactic_if: $ => prec.right(1, seq(
+      'if',
+      optional(seq(field('hyp', $.identifier), ':')),
+      field('condition', $._expression),
+      $._tactic_then_else,
+    )),
+
+    tactic_if_let: $ => prec.right(1, seq(
+      'if',
+      'let',
+      field('pattern', $._pattern),
+      choice(':=', '<-', '←'),
+      field('value', $._expression),
+      $._tactic_then_else,
+    )),
+
+    _tactic_then_else: $ => prec.right(seq(
+      'then',
+      $._layout_start,
+      field('then', $._tactic_seq),
+      optional($._layout_end),
+      optional(seq(
+        optional($._layout_semicolon),
+        'else',
+        $._layout_start,
+        field('else', $._tactic_seq),
+        optional($._layout_end),
+      )),
     )),
 
     // `show T`

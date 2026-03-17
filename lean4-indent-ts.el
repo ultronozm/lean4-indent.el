@@ -135,6 +135,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("tactic_show")
   "Tactic nodes whose body continues on following lines.")
 
+(defconst lean4-indent-ts--tactic-if-types
+  '("tactic_if" "tactic_if_let")
+  "Tactic nodes representing `if`/`if let` branches.")
+
 (defconst lean4-indent-ts--declaration-binding-types
   '("let" "have")
   "Declaration-body bindings whose value may continue on following lines.")
@@ -526,6 +530,17 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line intro)))
       (+ (lean4-indent-ts--node-indent intro) lean4-indent-offset))))
 
+(defun lean4-indent-ts--tactic-if-indent (node)
+  "Return indentation for tactic `if`/`if let` lines, or nil."
+  (let ((if-node (lean4-indent-ts--ancestor-type node
+                                                 lean4-indent-ts--tactic-if-types)))
+    (when (and if-node
+               (> (lean4-indent-ts--current-line)
+                  (lean4-indent-ts--node-start-line if-node)))
+      (if (string-match-p "\\`[ \t]*else\\_>" (lean4-indent-ts--line-text))
+          (lean4-indent-ts--node-indent if-node)
+        (+ (lean4-indent-ts--node-indent if-node) lean4-indent-offset)))))
+
 (defun lean4-indent-ts--declaration-binding-indent (node)
   "Return indentation for multiline declaration `let`/`have` values, or nil."
   (let ((binding (lean4-indent-ts--ancestor-type node
@@ -665,6 +680,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--tactic-config-indent node))
        ((lean4-indent-ts--anonymous-constructor-indent node))
        ((lean4-indent-ts--tactic-body-intro-indent node))
+       ((lean4-indent-ts--tactic-if-indent node))
        ((lean4-indent-ts--declaration-binding-indent node))
        ((lean4-indent-ts--field-assignment-indent node))
        ((lean4-indent-ts--constructor-indent node))

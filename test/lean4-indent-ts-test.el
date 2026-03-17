@@ -973,5 +973,48 @@ termination_by
     (should (member "match" (lean4-ts-test--ancestor-types-at-line 2)))
     (should (member "match_arm" (lean4-ts-test--ancestor-types-at-line 3)))))
 
+(ert-deftest lean4-indent-ts--tactic-if-then-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if h then
+    exact 0
+  else
+    exact 1"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--tactic-if-else-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if h then
+    exact 0
+  else
+    exact 1"
+    (lean4-ts-test--goto-line 4)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--tactic-if-let-else-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if let some x := h then
+    exact x
+  else
+    exact 0"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-if-parse-regression ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if h then
+    exact 0
+  else
+    exact 1"
+    (should (member "tactic_if" (lean4-ts-test--ancestor-types-at-line 2)))
+    (should (member "tactic_if" (lean4-ts-test--ancestor-types-at-line 4)))))
+
 (provide 'lean4-indent-ts-test)
 ;;; lean4-indent-ts-test.el ends here
