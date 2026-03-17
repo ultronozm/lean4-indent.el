@@ -128,6 +128,35 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--top-level-open-line ()
+  (lean4-ts-test-with-indent-buffer
+      "namespace Foo
+
+open Bar"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--top-level-end-line ()
+  (lean4-ts-test-with-indent-buffer
+      "namespace Foo
+  def x := 1
+end Foo"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--inductive-constructor-line ()
+  (lean4-ts-test-with-indent-buffer
+      "inductive Foo where
+  | mk : Nat -> Foo"
+    (lean4-ts-test--goto-line 2)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--structure-extends-field-body-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo :=
