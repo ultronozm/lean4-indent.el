@@ -229,6 +229,13 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
   smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--where-aligns-with-decl ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : True := by
+  exact True
+where"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--structure-where-fields ()
   (lean4-ts-test-with-indent-buffer
       "structure Foo where
