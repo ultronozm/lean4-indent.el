@@ -291,6 +291,20 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
     (fun h2 => t2)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--open-paren-continues-args ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  exact foo
+    (bar)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--paren-line-not-closed-indents-under-opener ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  exact (
+    foo"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--paren-led-named-argument-siblings ()
   (lean4-ts-test-with-indent-buffer
       "example : True := by

@@ -449,6 +449,14 @@ Prefer the repo-local compiled vendored grammar when present."
     (when apply
       (+ (lean4-indent-ts--node-indent apply) lean4-indent-offset))))
 
+(defun lean4-indent-ts--open-paren-body-indent (node)
+  "Return indentation inside a still-open parenthesized term, or nil."
+  (let ((paren (lean4-indent-ts--ancestor-type-starting-before-line
+                node '("parenthesized"))))
+    (when (and paren
+               (not (string-match-p "\\`[ \t]*[])})⟩]" (lean4-indent-ts--line-text))))
+      (+ (lean4-indent-ts--node-indent paren) lean4-indent-offset))))
+
 (defun lean4-indent-ts--named-argument-sibling-indent (node)
   "Return indentation for later sibling named arguments, or nil.
 
@@ -731,6 +739,7 @@ with that grouped application, not indent one step further."
        ((lean4-indent-ts--declaration-header-continuation-indent node))
        ((lean4-indent-ts--where-decl-indent node))
        ((lean4-indent-ts--fun-body-indent node))
+       ((lean4-indent-ts--open-paren-body-indent node))
        ((lean4-indent-ts--apply-argument-indent node))
        ((lean4-indent-ts--body-intro-indent node))
        ((lean4-indent-ts--declaration-body-indent node))))))
