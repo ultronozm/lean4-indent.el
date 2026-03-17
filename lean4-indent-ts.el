@@ -81,8 +81,9 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 
 (defconst lean4-indent-ts--top-level-types
   '("declaration" "section" "namespace" "open" "end" "variable" "attribute"
-    "hash_command" "abbrev" "def" "example" "instance" "structure"
-    "theorem" "definition" "inductive" "class_inductive")
+    "hash_command" "macro_rules" "notation" "abbrev" "def" "example"
+    "instance" "structure" "theorem" "definition" "inductive"
+    "class_inductive")
   "Node types that act like flush-left top-level commands.")
 
 (defconst lean4-indent-ts--decl-types
@@ -144,6 +145,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--structure-field-types
   '("structure_field")
   "Node types representing `structure ... where` field declarations.")
+
+(defconst lean4-indent-ts--macro-rule-types
+  '("macro_rule")
+  "Node types representing a single `macro_rules` branch.")
 
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
@@ -457,6 +462,18 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line owner)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
+(defun lean4-indent-ts--macro-rule-indent (node)
+  "Return indentation for `macro_rules` branches, or nil."
+  (let* ((rule (lean4-indent-ts--ancestor-type node lean4-indent-ts--macro-rule-types))
+         (owner (and rule
+                     (lean4-indent-ts--ancestor-type
+                      (treesit-node-parent rule)
+                      '("macro_rules")))))
+    (when (and rule owner
+               (= (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line rule)))
+      (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -489,6 +506,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--constructor-indent node))
        ((lean4-indent-ts--structure-field-indent node))
        ((lean4-indent-ts--deriving-indent node))
+       ((lean4-indent-ts--macro-rule-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))

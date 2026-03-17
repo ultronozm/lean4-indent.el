@@ -117,7 +117,7 @@ module.exports = grammar({
       // Declarations, notations, and examples with optional leading modifiers
       seq(repeat($._modifier), choice(
         $._declaration, $.declaration, $.example,
-        $.notation, $.attribute,
+        $.macro_rules, $.notation, $.attribute,
       )),
       // Other commands (no modifiers)
       $.namespace,
@@ -172,10 +172,22 @@ module.exports = grammar({
       repeat1($._expression),
     )),
 
+    macro_rules: $ => prec.right(seq(
+      'macro_rules',
+      $._layout_start,
+      repeat1(seq(field('rule', $.macro_rule), optional($._layout_semicolon))),
+      optional($._layout_end),
+    )),
+
+    macro_rule: $ => prec.right(seq(
+      '|',
+      repeat1(choice($._expression, '=>', ':=')),
+    )),
+
     // `notation:10000 n "!" => factorial n`
     notation: $ => prec.left(seq(
-      choice('notation', 'macro_rules', 'syntax', 'macro', 'elab',
-             'prefix', 'infix', 'infixl', 'infixr', 'postfix'),
+      choice('notation', 'syntax', 'macro', 'elab', 'prefix', 'infix',
+             'infixl', 'infixr', 'postfix'),
       optional(seq(':', $.number)),  // priority
       repeat(choice($._expression, '=>', ':=')),
     )),
