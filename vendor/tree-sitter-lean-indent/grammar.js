@@ -130,6 +130,8 @@ module.exports = grammar({
       $.export,
       $.compile_inductive,
       $.partial_fixpoint,
+      $.termination_by,
+      $.decreasing_by,
       $.variable,
       $.universe,
       $.hash_command,
@@ -188,6 +190,24 @@ module.exports = grammar({
 
     // `partial_fixpoint Foo`
     partial_fixpoint: $ => seq('partial_fixpoint', field('name', $._name)),
+
+    termination_by: $ => prec.right(choice(
+      $.termination_by_keyword,
+      seq($.termination_by_keyword, field('body', $._expression)),
+      seq($.termination_by_keyword, $._layout_start, field('body', $._expression),
+          optional($._layout_end)),
+    )),
+
+    decreasing_by: $ => prec.right(choice(
+      $.decreasing_by_keyword,
+      seq($.decreasing_by_keyword, field('body', $._expression)),
+      seq($.decreasing_by_keyword, $._layout_start, field('body', $._expression),
+          optional($._layout_end)),
+    )),
+
+    termination_by_keyword: _ => token(prec(1, 'termination_by')),
+
+    decreasing_by_keyword: _ => token(prec(1, 'decreasing_by')),
 
     // `export Foo (bar baz)`
     export: $ => seq(

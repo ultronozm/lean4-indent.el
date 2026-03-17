@@ -82,7 +82,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--top-level-types
   '("declaration" "section" "public_section" "namespace" "mutual" "open" "end"
     "variable" "attribute" "hash_command" "compile_inductive"
-    "partial_fixpoint"
+    "partial_fixpoint" "termination_by" "decreasing_by"
     "macro_rules" "notation" "abbrev" "def" "example" "instance"
     "structure" "theorem" "definition" "inductive" "class_inductive")
   "Node types that act like flush-left top-level commands.")
@@ -158,6 +158,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--mutual-child-types
   '("mutual_decl")
   "Node types representing direct children of a `mutual` block.")
+
+(defconst lean4-indent-ts--suffix-command-types
+  '("termination_by" "decreasing_by")
+  "Command-like suffix nodes used for declaration termination proofs.")
 
 (defvar lean4-indent-ts--current-line-cache nil
   "Dynamically bound current line number during one indentation pass.")
@@ -614,7 +618,16 @@ Prefer the repo-local compiled vendored grammar when present."
                                       lean4-indent-ts--mutual-child-types)
                               (= (lean4-indent-ts--node-start-line child)
                                  (lean4-indent-ts--current-line))))
-        (+ (lean4-indent-ts--node-indent mutual) lean4-indent-offset))))))
+       (+ (lean4-indent-ts--node-indent mutual) lean4-indent-offset))))))
+
+(defun lean4-indent-ts--suffix-command-indent (node)
+  "Return indentation for `termination_by`/`decreasing_by` bodies, or nil."
+  (let ((suffix (lean4-indent-ts--ancestor-type node
+                                                lean4-indent-ts--suffix-command-types)))
+    (when (and suffix
+               (> (lean4-indent-ts--current-line)
+                  (lean4-indent-ts--node-start-line suffix)))
+      (+ (lean4-indent-ts--node-indent suffix) lean4-indent-offset))))
 
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
@@ -659,6 +672,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--deriving-indent node))
        ((lean4-indent-ts--macro-rule-indent node))
        ((lean4-indent-ts--binary-expression-indent node))
+       ((lean4-indent-ts--suffix-command-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))

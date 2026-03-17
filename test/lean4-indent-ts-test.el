@@ -923,5 +923,32 @@ end"
                    "mutual"))
     (should (member "mutual_decl" (lean4-ts-test--ancestor-types-at-line 2)))))
 
+(ert-deftest lean4-indent-ts--termination-by-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo (n : Nat) : Nat := by
+  exact n
+termination_by
+  n"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--decreasing-by-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo (n : Nat) : Nat := by
+  exact n
+decreasing_by
+  simp_wf"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--termination-by-parse-regression ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo (n : Nat) : Nat := by
+  exact n
+termination_by
+  n"
+    (should (equal (treesit-node-type (treesit-buffer-root-node 'lean)) "module"))
+    (should (equal (treesit-node-type (treesit-node-child (treesit-buffer-root-node 'lean) 1 t))
+                   "termination_by"))
+    (should (member "termination_by" (lean4-ts-test--ancestor-types-at-line 4)))))
+
 (provide 'lean4-indent-ts-test)
 ;;; lean4-indent-ts-test.el ends here
