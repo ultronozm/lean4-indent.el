@@ -142,6 +142,28 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   x"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--wrapped-theorem-binder-continuation-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem lemma_aachIBP_parts (σ : ℝ) (φ : ℝ → ℝ) (a b : ℝ) (hab : a < b) (ha_pos : 0 < a)
+    : True := by"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--wrapped-theorem-proof-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo :
+    True
+    ∧ True
+    := by
+  exact ⟨trivial, trivial⟩"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--inline-by-after-fun-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem algebraMap_leftInverse :
+    Function.LeftInverse algebraMapInv (algebraMap R <| FreeAlgebra R X) := fun x ↦ by
+  simp [algebraMapInv]"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--declaration-type-continuation-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo :
@@ -234,6 +256,13 @@ open Bar"
 (ert-deftest lean4-indent-ts--top-level-compile-inductive-line ()
   (lean4-ts-test-with-indent-buffer
       "compile_inductive Foo"
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--top-level-partial-fixpoint-line ()
+  (lean4-ts-test-with-indent-buffer
+      "partial_fixpoint Foo"
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))

@@ -82,6 +82,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--top-level-types
   '("declaration" "section" "public_section" "namespace" "open" "end"
     "variable" "attribute" "hash_command" "compile_inductive"
+    "partial_fixpoint"
     "macro_rules" "notation" "abbrev" "def" "example" "instance"
     "structure" "theorem" "definition" "inductive" "class_inductive")
   "Node types that act like flush-left top-level commands.")

@@ -127,6 +127,7 @@ module.exports = grammar({
       $.open,
       $.export,
       $.compile_inductive,
+      $.partial_fixpoint,
       $.variable,
       $.universe,
       $.hash_command,
@@ -161,6 +162,9 @@ module.exports = grammar({
 
     // `compile_inductive Foo`
     compile_inductive: $ => seq('compile_inductive', field('name', $._name)),
+
+    // `partial_fixpoint Foo`
+    partial_fixpoint: $ => seq('partial_fixpoint', field('name', $._name)),
 
     // `export Foo (bar baz)`
     export: $ => seq(
