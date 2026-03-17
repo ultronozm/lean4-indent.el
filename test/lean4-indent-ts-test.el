@@ -185,6 +185,16 @@ end Foo"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--inductive-deriving-line ()
+  (lean4-ts-test-with-indent-buffer
+      "inductive Foo where
+  | mk : Nat -> Foo
+  deriving Repr"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--structure-extends-field-body-line ()
   (lean4-ts-test-with-indent-buffer
       "def foo :=

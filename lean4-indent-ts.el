@@ -448,15 +448,14 @@ Prefer the repo-local compiled vendored grammar when present."
 
 (defun lean4-indent-ts--deriving-indent (node)
   "Return indentation for declaration `deriving` lines, or nil."
-  (let* ((deriving (lean4-indent-ts--ancestor-type node '("deriving")))
-         (owner (and deriving
-                     (lean4-indent-ts--ancestor-type
-                      (treesit-node-parent deriving)
-                      '("structure" "inductive" "class_inductive")))))
-    (when (and deriving owner
-               (= (line-number-at-pos (line-beginning-position) t)
-                  (lean4-indent-ts--node-start-line deriving)))
-      (lean4-indent-ts--node-indent owner))))
+  (let ((owner (lean4-indent-ts--ancestor-type node
+                                               '("structure" "inductive"
+                                                 "class_inductive"))))
+    (when (and owner
+               (string-match-p "\\`[ \t]*deriving\\_>" (lean4-indent-ts--line-text))
+               (> (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line owner)))
+      (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
