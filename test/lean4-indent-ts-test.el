@@ -391,6 +391,16 @@ open Bar"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--macro-rules-branch-after-comment-line ()
+  (lean4-ts-test-with-indent-buffer
+      "macro_rules
+  -- comment
+  | `(foo) => bar"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--scoped-macro-rules-branch-line ()
   (lean4-ts-test-with-indent-buffer
       "scoped macro_rules
@@ -415,6 +425,16 @@ end Foo"
       "inductive Foo where
   | mk : Nat -> Foo"
     (lean4-ts-test--goto-line 2)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--inductive-second-constructor-line ()
+  (lean4-ts-test-with-indent-buffer
+      "inductive Foo where
+  | mk1 : Foo
+  | mk2 : Foo"
+    (lean4-ts-test--goto-line 3)
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
@@ -703,6 +723,19 @@ end Foo"
   match x with
   | 0 => 0"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--later-match-alt-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : Nat :=
+  match x with
+  | 0 =>
+    0
+  | n =>
+    n"
+    (lean4-ts-test--goto-line 5)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
 
 (ert-deftest lean4-indent-ts--match-alt-body-line ()
   (lean4-ts-test-with-indent-buffer
