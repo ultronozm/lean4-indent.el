@@ -324,6 +324,16 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
         (2 * π * I * ↑(deriv φ x) ^ 2) * e (φ x)) volume a b := by"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--nested-paren-continuation-mathlib-log-deriv ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  have : True := by
+    have h := (by
+      have : HasDerivAt
+        (fun x ↦ 1 / 2 * log ((1 + x) / (1 - x)) - (∑ i ∈ range n, x ^ (2 * i + 1) / (2 * i + 1)))
+        ((y ^ 2) ^ n / (1 - y ^ 2)) y := by"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--wrapped-sibling-application-argument ()
   (lean4-ts-test-with-indent-buffer
       "theorem Algebra.adjoin_int {R : Type*} [Ring R] (s : Set R) :
@@ -769,6 +779,17 @@ end Foo"
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--branch-ignores-inner-with ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  match x with
+  | a =>
+    match y with
+    | b =>
+      rfl
+  | c =>"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--match-alt-body-line ()
   (lean4-ts-test-with-indent-buffer
