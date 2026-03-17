@@ -545,7 +545,7 @@ Prefer the repo-local compiled vendored grammar when present."
       (+ (if extends-instance
              (lean4-indent-ts--node-indent instance)
            (lean4-indent-ts--node-indent field))
-         (* 2 lean4-indent-offset)))))
+        (* 2 lean4-indent-offset)))))
 
 (defun lean4-indent-ts--constructor-indent (node)
   "Return indentation for inductive constructors, or nil."
