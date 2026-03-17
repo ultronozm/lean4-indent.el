@@ -540,6 +540,13 @@ end Foo"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--let-semicolon-chain-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  let x := foo;
+  let y := bar"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--declaration-if-then-line ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo : P :=
