@@ -95,6 +95,46 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
       "notation:10000 x \"!\" => x"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--syntax-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "syntax:max term \"++\" term : term"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--macro-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "macro \"foo\" : term => `(1)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--elab-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "elab \"foo\" : tactic => `(tactic| skip)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--prefix-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "prefix:100 \"!\" => id"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--infix-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "infixl:65 \" +++ \" => HAdd.hAdd"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--axiom-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "axiom foo : Nat"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--constant-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "constant foo : Nat"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--opaque-top-level-line ()
+  (lean4-ts-test-with-indent-buffer
+      "opaque foo : Nat := 1"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--wrapped-theorem-body ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo (x : Nat) :
