@@ -17,7 +17,7 @@
      (set-syntax-table lean4-syntax-table)
      (setq-local indent-tabs-mode nil)
      (setq-local lean4-indent-offset 2)
-     (setq-local indent-line-function #'lean4-indent-line-function)
+     (lean4-indent-setup-buffer)
      ,@body))
 
 (defmacro lean4-define-final-line-indent-test (name contents)
@@ -388,13 +388,70 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "theorem adjoin_range_toAlgHom (t : Set A) :\n"
           "    (Algebra.adjoin (toAlgHom R S A).range t).restrictScalars R =\n"
           "      (Algebra.adjoin S t).restrictScalars R :=\n"
-          "  Subalgebra.ext fun z ↦\n"
-          "    show z ∈ Subsemiring.closure (Set.range (algebraMap (toAlgHom R S A).range A) ∪ t : Set A) ↔\n"
-          "         z ∈ Subsemiring.closure (Set.range (algebraMap S A) ∪ t : Set A) by\n"
-          "      suffices Set.range (algebraMap (toAlgHom R S A).range A) = Set.range (algebraMap S A) by\n"
-          "        rw [this]\n"
-          "      ext z\n"
-          "      exact ⟨fun ⟨⟨_, y, h1⟩, h2⟩ ↦ ⟨y, h2 ▸ h1⟩, fun ⟨y, hy⟩ ↦ ⟨⟨z, y, hy⟩, rfl⟩⟩\n")))
+          "        Subalgebra.ext fun z ↦\n"
+          "          show z ∈ Subsemiring.closure (Set.range (algebraMap (toAlgHom R S A).range A) ∪ t : Set A) ↔\n"
+          "               z ∈ Subsemiring.closure (Set.range (algebraMap S A) ∪ t : Set A) by\n"
+          "            suffices Set.range (algebraMap (toAlgHom R S A).range A) = Set.range (algebraMap S A) by\n"
+          "              rw [this]\n"
+          "              ext z\n"
+          "              exact ⟨fun ⟨⟨_, y, h1⟩, h2⟩ ↦ ⟨y, h2 ▸ h1⟩, fun ⟨y, hy⟩ ↦ ⟨⟨z, y, hy⟩, rfl⟩⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-comment-continuation-from-before-file ()
+  (let ((contents
+         (concat
+          "/-!\n"
+          "## TODO\n\n"
+          "* once we have scalar actions by semigroups (as opposed to monoids), implement the action of a\n"
+          "  non-unital subalgebra on the larger algebra.\n"
+          "-/\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-wrapped-instance-where-body-from-before-file ()
+  (let ((contents
+         (concat
+          "instance instInvolutiveStar {S R : Type*} [InvolutiveStar R] [SetLike S R] [StarMemClass S R]\n"
+          "    (s : S) : InvolutiveStar s where\n"
+          "  star_involutive r := Subtype.ext <| star_star (r : R)\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-structure-doc-and-fields-from-before-file ()
+  (let ((contents
+         (concat
+          "structure NonUnitalStarSubalgebra (R : Type u) (A : Type v) [CommSemiring R]\n"
+          "    [NonUnitalNonAssocSemiring A] [Module R A] [Star A] : Type v\n"
+          "    extends NonUnitalSubalgebra R A where\n"
+          "  /-- The `carrier` of a `NonUnitalStarSubalgebra` is closed under the `star` operation. -/\n"
+          "  star_mem' : ∀ {a : A} (_ha : a ∈ carrier), star a ∈ carrier\n\n"
+          "/-- Reinterpret a `NonUnitalStarSubalgebra` as a `NonUnitalSubalgebra`. -/\n"
+          "add_decl_doc NonUnitalStarSubalgebra.toNonUnitalSubalgebra\n")))
+    (lean4-test-with-indent-buffer contents
+      (let ((before (buffer-string)))
+        (indent-region (point-min) (point-max))
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest lean4-indent--indent-region-preserves-local-let-structure-literal-from-before-file ()
+  (let ((contents
+         (concat
+          "theorem coe_iSup_of_directed [Nonempty ι] {S : ι → NonUnitalStarSubalgebra R A}\n"
+          "    (dir : Directed (· ≤ ·) S) : ↑(iSup S) = ⋃ i, (S i : Set A) :=\n"
+          "  let K : NonUnitalStarSubalgebra R A :=\n"
+          "    { __ := NonUnitalSubalgebra.copy _ _ (NonUnitalSubalgebra.coe_iSup_of_directed dir).symm\n"
+          "      star_mem' := fun hx ↦\n"
+          "        let ⟨i, hi⟩ := Set.mem_iUnion.1 hx\n"
+          "        Set.mem_iUnion.2 ⟨i, star_mem (s := S i) hi⟩ }\n"
+          "  have : iSup S = K := le_antisymm (iSup_le fun i ↦ le_iSup (fun i ↦ (S i : Set A)) i)\n"
+          "    (Set.iUnion_subset fun _ ↦ le_iSup S _)\n"
+          "  this.symm ▸ rfl\n")))
     (lean4-test-with-indent-buffer contents
       (let ((before (buffer-string)))
         (indent-region (point-min) (point-max))
@@ -666,20 +723,20 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
  "lemma IsOrderedRing.of_mul_nonneg [Ring R] [PartialOrder R]
     [ZeroLEOneClass R] (mul_nonneg : ∀ a b : R, 0 ≤ a → 0 ≤ b → 0 ≤ a * b) :
     IsOrderedRing R where
-      mul_le_mul_of_nonneg_left := by")
+  mul_le_mul_of_nonneg_left := by")
 
 (lean4-define-final-line-indent-test
  lean4-indent--wrapped-declaration-where-continuation
  "lemma foo :
     True
     where
-      bar := by")
+  bar := by")
 
 (lean4-define-final-line-indent-test
  lean4-indent--wrapped-declaration-where-inline
  "instance [Add α] {a b : Thunk α} (εa εb : Type*) :
     EstimatorData (a + b) (εa × εb) where
-      bound e := by")
+  bound e := by")
 
 (ert-deftest lean4-indent--have-continues-arguments ()
   (lean4-test-with-indent-buffer
@@ -1903,6 +1960,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (delete-region (line-beginning-position) (line-end-position))
     (delete-char -1)
     (lean4-test--goto-line 19)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-ext-fun-theorem-body-stays-at-body-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem adjoin_ext {s : Set A} ⦃φ₁ φ₂ : adjoin R s →ₐ[R] B⦄\n"
+       "    (h : ∀ x hx, φ₁ ⟨x, subset_adjoin hx⟩ = φ₂ ⟨x, subset_adjoin hx⟩) : φ₁ = φ₂ :=\n"
+       "  ext fun ⟨x, hx⟩ ↦ adjoin_induction h (fun _ ↦ φ₂.commutes _ ▸ φ₁.commutes _)\n"
+       "    (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· + ·) h₁ h₂ <;> rw [← map_add] <;> rfl)\n"
+       "    (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· * ·) h₁ h₂ <;> rw [← map_mul] <;> rfl) hx\n")
+    (lean4-test--goto-line 3)
     (end-of-line)
     (lean4-test--newline-and-assert "  ")))
 

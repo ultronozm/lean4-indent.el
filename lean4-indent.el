@@ -24,12 +24,11 @@
 ;; Much of the current implementation was developed with Codex against
 ;; a growing test suite.  Expect rough edges.
 ;;
-;; To use it, set `indent-line-function' buffer-locally in a `lean4-mode-hook':
+;; To use it, call `lean4-indent-setup-buffer' in a `lean4-mode-hook':
 ;;
 ;;   (add-hook 'lean4-mode-hook
 ;;             (lambda ()
-;;               (setq-local indent-line-function
-;;                           #'lean4-indent-line-function)))
+;;               (lean4-indent-setup-buffer)))
 ;;
 ;; Optional bindings:
 ;;
@@ -94,6 +93,19 @@ current line."
   :type 'integer
   :safe #'integerp)
 
+(defvar lean4-indent--region-top-level-contexts nil
+  "Dynamically bound top-level context cache for `lean4-indent-region-function'.")
+
+(defvar lean4-indent--region-line-contexts nil
+  "Dynamically bound per-line context cache for `lean4-indent-region-function'.")
+
+;;;###autoload
+(defun lean4-indent-setup-buffer ()
+  "Install Lean 4 line and region indentation functions in the current buffer."
+  (interactive)
+  (setq-local indent-line-function #'lean4-indent-line-function)
+  (setq-local indent-region-function #'lean4-indent-region-function))
+
 (defconst lean4-indent--ops
   '("+" "-" "*" "/" "•" "≤" "≥" "≠" "∧" "∨" "↔" "→" "↦" "<;>"
     "<=" ">=" "=>" "->" "≅" "≃")
@@ -104,7 +116,7 @@ current line."
   "Keywords treated as simp-like tactics.")
 
 (defconst lean4-indent--top-level-anchors
-  '("attribute" "compile_inductive" "set_option" "open" "universe" "variable"
+  '("attribute" "add_decl_doc" "compile_inductive" "set_option" "open" "universe" "variable"
     "@[" "scoped["
     "namespace" "section" "public section")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
@@ -312,6 +324,17 @@ current line."
     (goto-char pos)
     (end-of-line)
     (nth 1 (syntax-ppss))))
+
+(defun lean4-indent--matching-open-delimiter-pos-at-eol (pos)
+  "Return the matching opener for the last delimiter on line POS, or nil."
+  (save-excursion
+    (goto-char pos)
+    (end-of-line)
+    (skip-chars-backward " \t")
+    (when (> (point) (line-beginning-position))
+      (condition-case nil
+          (scan-sexps (point) -1)
+        (error nil)))))
 
 (defun lean4-indent--starts-with-p (text regex)
   "Return non-nil if TEXT starts with REGEX after indentation."
@@ -780,17 +803,24 @@ the line; otherwise indent from the delimiter column."
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
   "Find nearest prior nonblank line with indent < PREV-INDENT.
 Return (anchor-pos . anchor-indent), or nil if none."
-  (save-excursion
-    (goto-char prev-pos)
-    (let ((found nil))
-      (while (and (not found) (not (bobp)))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point))))
-          (unless (lean4-indent--line-blank-p text)
-            (let ((indent (lean4-indent--line-indent (point))))
-              (when (< indent prev-indent)
-                (setq found (cons (point) indent)))))))
-      found)))
+  (or (let ((context (lean4-indent--region-line-context prev-pos)))
+        (and context
+             (let ((anchor-pos (plist-get context :anchor-pos))
+                   (anchor-indent (plist-get context :anchor-indent)))
+               (and anchor-pos
+                    (< anchor-indent prev-indent)
+                    (cons anchor-pos anchor-indent)))))
+      (save-excursion
+        (goto-char prev-pos)
+        (let ((found nil))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (let ((text (lean4-indent--line-text (point))))
+              (unless (lean4-indent--line-blank-p text)
+                (let ((indent (lean4-indent--line-indent (point))))
+                  (when (< indent prev-indent)
+                    (setq found (cons (point) indent)))))))
+          found))))
 
 (defun lean4-indent--anchor-parent-indent (anchor-pos anchor-indent step)
   "Compute the parent indentation from ANCHOR-POS/ANCHOR-INDENT.
@@ -864,43 +894,45 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
 ;;; Calc helpers
 (defun lean4-indent--in-calc-block-p (start-pos)
   "Return non-nil if START-POS is inside a calc block."
-  (save-excursion
-    (goto-char start-pos)
-    (let ((found nil)
-          (start-indent (current-indentation)))
-      (while (and (not found) (not (bobp)))
-        (forward-line -1)
-        (let* ((text (lean4-indent--line-text (point)))
-               (indent (lean4-indent--line-indent (point))))
-          (unless (or (lean4-indent--line-blank-p text)
-                      (lean4-indent--comment-line-p (point)))
-            (when (and (< indent start-indent)
-                       (lean4-indent--starts-with-p text lean4-indent--re-starts-calc))
-              (setq found t))
-            (when (< indent start-indent)
-              (setq start-indent indent)))))
-      found)))
+  (or (plist-get (lean4-indent--region-line-context start-pos) :calc-indent)
+      (save-excursion
+        (goto-char start-pos)
+        (let ((found nil)
+              (start-indent (current-indentation)))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (let* ((text (lean4-indent--line-text (point)))
+                   (indent (lean4-indent--line-indent (point))))
+              (unless (or (lean4-indent--line-blank-p text)
+                          (lean4-indent--comment-line-p (point)))
+                (when (and (< indent start-indent)
+                           (lean4-indent--starts-with-p text lean4-indent--re-starts-calc))
+                  (setq found t))
+                (when (< indent start-indent)
+                  (setq start-indent indent)))))
+          found))))
 
 (defun lean4-indent--find-calc-step-indent (start-pos)
   "Return indentation of nearest calc step line above START-POS, or nil."
-  (save-excursion
-    (goto-char start-pos)
-    (let ((step-indent (current-indentation))
-          (found nil)
-          (done nil))
-      (while (and (not found) (not done) (not (bobp)))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point)))
-              (indent (lean4-indent--line-indent (point))))
-          (cond
-           ((lean4-indent--line-blank-p text) nil)
-           ((lean4-indent--starts-with-p text lean4-indent--re-starts-calc)
-            (setq done t))
-          ((and (<= indent step-indent)
-                 (or (lean4-indent--line-starts-with-calc-step-p text)
-                     (lean4-indent--line-ends-with-equals-p text)))
-            (setq found (lean4-indent--line-indent (point)))))))
-      found)))
+  (or (plist-get (lean4-indent--region-line-context start-pos) :calc-step-indent)
+      (save-excursion
+        (goto-char start-pos)
+        (let ((step-indent (current-indentation))
+              (found nil)
+              (done nil))
+          (while (and (not found) (not done) (not (bobp)))
+            (forward-line -1)
+            (let ((text (lean4-indent--line-text (point)))
+                  (indent (lean4-indent--line-indent (point))))
+              (cond
+               ((lean4-indent--line-blank-p text) nil)
+               ((lean4-indent--starts-with-p text lean4-indent--re-starts-calc)
+                (setq done t))
+               ((and (<= indent step-indent)
+                     (or (lean4-indent--line-starts-with-calc-step-p text)
+                         (lean4-indent--line-ends-with-equals-p text)))
+                (setq found (lean4-indent--line-indent (point)))))))
+          found))))
 
 (defun lean4-indent--calc-block-body-indent (start-pos base-indent step)
   "Return indent for a term body inside a surrounding calc block, or nil."
@@ -926,37 +958,186 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
   (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
     (and top (+ (lean4-indent--line-indent top) step))))
 
-(defun lean4-indent--top-level-declaration-body-intro-kind (start-pos)
-  "Return the body-intro kind for the nearest enclosing top-level declaration.
+(defun lean4-indent--top-level-declaration-body-intro-from (top start-pos)
+  "Return top-level body-intro info for declaration TOP around START-POS.
 
 For wrapped declarations, scan forward from the top-level declaration head to
 the first line that introduces the declaration body, such as `:=', `:= by', or
-`where'.  Return nil when START-POS is not inside such a declaration."
-  (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
-    (when top
-      (let ((top-text (lean4-indent--line-text top)))
-        (when (lean4-indent--line-top-level-declaration-head-p top-text)
-          (save-excursion
-            (goto-char top)
-            (let ((fallback nil))
-              (while (<= (point) start-pos)
-                (let ((text (lean4-indent--line-text (point))))
-                  (unless (or (lean4-indent--line-blank-p text)
-                              (lean4-indent--comment-line-p (point)))
-                    (when (> (point) top)
-                      (when (lean4-indent--line-top-level-anchor-p text)
-                        (setq fallback nil)
-                        (goto-char (1+ start-pos))))
-                    (let ((kind (lean4-indent--line-body-intro-kind
-                                 (lean4-indent--line-text-no-comment (point)))))
-                      (cond
-                       ((memq kind '(coloneq-by coloneq by where))
-                        (setq fallback kind)
-                        (goto-char (1+ start-pos)))
-                       ((and kind (not fallback))
-                        (setq fallback kind))))))
-                (forward-line 1))
-              fallback)))))))
+`where'.  Return a plist with keys `:pos' and `:kind', or nil when START-POS is
+not inside such a declaration."
+  (when top
+    (let ((top-text (lean4-indent--line-text top)))
+      (when (lean4-indent--line-top-level-declaration-head-p top-text)
+        (save-excursion
+          (goto-char top)
+          (let ((fallback-kind nil)
+                (fallback-pos nil))
+            (while (<= (point) start-pos)
+              (let ((text (lean4-indent--line-text (point))))
+                (unless (or (lean4-indent--line-blank-p text)
+                            (lean4-indent--comment-line-p (point)))
+                  (when (> (point) top)
+                    (when (lean4-indent--line-top-level-anchor-p text)
+                      (setq fallback-kind nil
+                            fallback-pos nil)
+                      (goto-char (1+ start-pos))))
+                  (let ((kind (lean4-indent--line-body-intro-kind
+                               (lean4-indent--line-text-no-comment (point)))))
+                    (cond
+                     ((memq kind '(coloneq-by coloneq by where))
+                      (setq fallback-kind kind
+                            fallback-pos (point))
+                      (goto-char (1+ start-pos)))
+                     ((and kind (not fallback-kind))
+                      (setq fallback-kind kind
+                            fallback-pos (point)))))))
+              (forward-line 1))
+            (and fallback-kind
+                 (list :pos fallback-pos :kind fallback-kind))))))))
+
+(defun lean4-indent--top-level-declaration-body-intro-kind-from (top start-pos)
+  "Return the body-intro kind for a top-level declaration TOP around START-POS."
+  (plist-get (lean4-indent--top-level-declaration-body-intro-from top start-pos)
+             :kind))
+
+(defun lean4-indent--top-level-context (start-pos step)
+  "Return top-level context for START-POS as a plist, or nil."
+  (or (and start-pos
+           lean4-indent--region-top-level-contexts
+           (let ((index (1- (line-number-at-pos start-pos t))))
+             (and (>= index 0)
+                  (< index (length lean4-indent--region-top-level-contexts))
+                  (aref lean4-indent--region-top-level-contexts index))))
+      (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
+        (when top
+          (let ((body-intro
+                 (lean4-indent--top-level-declaration-body-intro-from top start-pos)))
+            (list :pos top
+                  :body-indent (+ (lean4-indent--line-indent top) step)
+                  :body-intro-pos (plist-get body-intro :pos)
+                  :body-intro-kind (plist-get body-intro :kind)))))))
+
+(defun lean4-indent--top-level-declaration-body-intro-kind (start-pos)
+  "Return the body-intro kind for the nearest enclosing top-level declaration."
+  (plist-get (lean4-indent--top-level-context start-pos lean4-indent-offset)
+             :body-intro-kind))
+
+(defun lean4-indent--region-line-context (pos)
+  "Return cached per-line context for POS, or nil when unavailable."
+  (and pos
+       lean4-indent--region-line-contexts
+       (let ((index (1- (line-number-at-pos pos t))))
+         (and (>= index 0)
+              (< index (length lean4-indent--region-line-contexts))
+              (aref lean4-indent--region-line-contexts index)))))
+
+(defun lean4-indent--build-top-level-context-cache (step)
+  "Build a per-line top-level context cache using indentation STEP."
+  (save-excursion
+    (goto-char (point-min))
+    (let* ((line-count (line-number-at-pos (point-max) t))
+           (contexts (make-vector (max 1 line-count) nil))
+           (current-top-pos nil)
+           (current-top-is-decl nil)
+           (current-body-intro-pos nil)
+           (current-body-intro-kind nil)
+           (current-body-intro-final-p nil)
+           (current-body-indent nil))
+      (while (not (eobp))
+        (let* ((pos (point))
+               (text (lean4-indent--line-text pos)))
+          (unless (or (lean4-indent--line-blank-p text)
+                      (lean4-indent--comment-line-p pos))
+            (when (lean4-indent--line-top-level-anchor-p text)
+              (setq current-top-pos (copy-marker pos)
+                    current-top-is-decl (lean4-indent--line-top-level-declaration-head-p text)
+                    current-body-intro-pos nil
+                    current-body-intro-kind nil
+                    current-body-intro-final-p nil
+                    current-body-indent (+ (lean4-indent--line-indent pos) step)))
+            (when (and current-top-pos current-top-is-decl
+                       (not current-body-intro-final-p))
+              (let ((kind (lean4-indent--line-body-intro-kind
+                           (lean4-indent--line-text-no-comment pos))))
+                (cond
+                 ((memq kind '(coloneq-by coloneq by where))
+                  (setq current-body-intro-pos (copy-marker pos)
+                        current-body-intro-kind kind
+                        current-body-intro-final-p t))
+                 ((and kind (not current-body-intro-kind))
+                  (setq current-body-intro-pos (copy-marker pos)
+                        current-body-intro-kind kind))))))
+          (aset contexts
+                (1- (line-number-at-pos pos t))
+                (and current-top-pos
+                     (list :pos current-top-pos
+                           :body-indent current-body-indent
+                           :body-intro-pos current-body-intro-pos
+                           :body-intro-kind current-body-intro-kind))))
+        (forward-line 1))
+      contexts)))
+
+(defun lean4-indent--build-region-line-context-cache ()
+  "Build a per-line cache for enclosing `mutual' and `calc' context."
+  (save-excursion
+    (goto-char (point-min))
+    (let* ((line-count (line-number-at-pos (point-max) t))
+           (contexts (make-vector (max 1 line-count) nil))
+           (block-stack nil)
+           (calc-stack nil)
+           (indent-stack nil))
+      (while (not (eobp))
+        (let* ((pos (point))
+               (text (lean4-indent--line-text pos))
+               (nonblank (not (lean4-indent--line-blank-p text)))
+               (significant (and nonblank
+                                 (not (lean4-indent--comment-line-p pos))))
+               (indent (and nonblank (lean4-indent--line-indent pos))))
+          (when nonblank
+            (while (and indent-stack
+                        (>= (cdar indent-stack) indent))
+              (pop indent-stack)))
+          (when significant
+            (while (and calc-stack
+                        (<= indent (plist-get (car calc-stack) :indent)))
+              (pop calc-stack)))
+          (aset contexts
+                (1- (line-number-at-pos pos t))
+                (list :mutual-indent
+                      (catch 'mutual
+                        (dolist (entry block-stack)
+                          (when (eq (car entry) 'mutual)
+                            (throw 'mutual (cdr entry))))
+                        nil)
+                      :anchor-pos (caar indent-stack)
+                      :anchor-indent (cdar indent-stack)
+                      :calc-indent (plist-get (car calc-stack) :indent)
+                      :calc-step-indent (plist-get (car calc-stack) :last-step-indent)))
+          (when nonblank
+            (push (cons (copy-marker pos) indent) indent-stack))
+          (when significant
+            (when (and calc-stack
+                       (> indent (plist-get (car calc-stack) :indent))
+                       (or (lean4-indent--line-starts-with-calc-step-p text)
+                           (lean4-indent--line-ends-with-equals-p text)))
+              (setf (plist-get (car calc-stack) :last-step-indent) indent))
+            (cond
+             ((lean4-indent--starts-with-p text lean4-indent--re-starts-end)
+              (when block-stack
+                (pop block-stack)))
+             (t
+              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-mutual)
+                (push (cons 'mutual indent) block-stack))
+              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-public-section)
+                (push (cons 'public-section indent) block-stack))
+              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-section)
+                (push (cons 'section indent) block-stack))
+              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-namespace)
+                (push (cons 'namespace indent) block-stack))
+              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-calc)
+                (push (list :indent indent :last-step-indent nil) calc-stack)))))
+          (forward-line 1)))
+      contexts)))
 
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
@@ -1019,23 +1200,24 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
 
 (defun lean4-indent--find-mutual-indent (start-pos)
   "Return the indentation of the nearest enclosing `mutual`, or nil."
-  (save-excursion
-    (goto-char start-pos)
-    (let ((found nil)
-          (depth 0))
-      (while (and (not found) (not (bobp)))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point))))
-          (unless (or (lean4-indent--line-blank-p text)
-                      (lean4-indent--comment-line-p (point)))
-            (cond
-             ((lean4-indent--starts-with-p text lean4-indent--re-starts-end)
-              (setq depth (1+ depth)))
-             ((lean4-indent--starts-with-p text lean4-indent--re-starts-mutual)
-              (if (> depth 0)
-                  (setq depth (1- depth))
-                (setq found (lean4-indent--line-indent (point)))))))))
-      found)))
+  (or (plist-get (lean4-indent--region-line-context start-pos) :mutual-indent)
+      (save-excursion
+        (goto-char start-pos)
+        (let ((found nil)
+              (depth 0))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (let ((text (lean4-indent--line-text (point))))
+              (unless (or (lean4-indent--line-blank-p text)
+                          (lean4-indent--comment-line-p (point)))
+                (cond
+                 ((lean4-indent--starts-with-p text lean4-indent--re-starts-end)
+                  (setq depth (1+ depth)))
+                 ((lean4-indent--starts-with-p text lean4-indent--re-starts-mutual)
+                  (if (> depth 0)
+                      (setq depth (1- depth))
+                    (setq found (lean4-indent--line-indent (point)))))))))
+          found))))
 
 (defun lean4-indent--compute-indent ()
   "Compute indentation for current line."
@@ -1121,9 +1303,12 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
          (prev-closes-paren (and prev-pos (lean4-indent--line-closes-paren-p prev-pos)))
          (prev-starts-with-paren-closed
           (and prev-pos (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
+         (top-level-context (and prev-pos
+                                 (lean4-indent--top-level-context prev-pos step)))
+         (top-level-body-intro-pos
+          (plist-get top-level-context :body-intro-pos))
          (top-level-body-intro-kind
-          (and prev-pos
-               (lean4-indent--top-level-declaration-body-intro-kind prev-pos)))
+          (plist-get top-level-context :body-intro-kind))
          (nested-by-candidate-p
           (and prev-pos
                anchor-pos
@@ -1131,16 +1316,18 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
                (= prev-indent (+ anchor-indent step))
                anchor-by-block-p))
          (prev-calc-body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step))
-         (prev-top-level-body-indent (lean4-indent--top-level-anchor-body-indent prev-pos step))
+         (prev-top-level-body-indent (plist-get top-level-context :body-indent))
          (prev-have-suffices-p (string-match-p lean4-indent--re-have-suffices prev-text))
          (prev-coloneq-by-top-level-body-indent
           (and prev-top-level-body-indent
+               (eq prev-pos top-level-body-intro-pos)
                (not prev-have-suffices-p)
                (not (and prev-pos
                          (lean4-indent--prev-have-suffices-p prev-pos prev-indent)))
                prev-top-level-body-indent))
          (prev-coloneq-top-level-body-indent
-          (and (not prev-have-suffices-p)
+          (and (eq prev-pos top-level-body-intro-pos)
+               (not prev-have-suffices-p)
                (not prev-starts-with-calc-step)
                (not anchor-starts-calc)
                (not (eq top-level-body-intro-kind 'coloneq-by))
@@ -1155,18 +1342,9 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
       (if prev-pos
           (lean4-indent--find-end-anchor-indent (point))
         0))
-     ;; 1) Comment continuation
-     ((and prev-comment-p current-comment-p)
-      prev-indent)
-     ;; 1.25) A top-level doc comment after a blank line stays flush-left.
-     ((and current-comment-p
-           prev-pos
-           (string-match-p "\\`[ \t]*/--" current-text)
-           (save-excursion
-             (forward-line -1)
-             (lean4-indent--line-blank-p (lean4-indent--line-text (point))))
-           (lean4-indent--next-significant-noncomment-line-top-level-anchor-p))
-      0)
+     ;; 1) Keep comment indentation as written.
+     (current-comment-p
+      (current-indentation))
      ;; 1.5) Lines starting with := continue previous field alignment.
      ((lean4-indent--starts-with-p current-text ":=")
       prev-indent)
@@ -1231,6 +1409,13 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
        (prev-continuation-p prev-indent)
        (prev-label-colon (+ prev-indent step))
        (t (+ prev-indent (* 2 step)))))
+     ;; 4.25) Local let/have lines with an inline := term keep continuation aligned.
+     ((and (eq prev-body-intro-kind 'coloneq)
+           (string-match-p
+            "\\`[ \t]*\\(?:let\\|have\\)\\_>.*:=\\s-*\\S-+"
+            prev-text-no-comment)
+           (not (lean4-indent--starts-with-p current-text ":=")))
+      prev-indent)
      ;; 4.5) Focus-dot lines that open a block should indent one step.
      ((and prev-starts-with-focus
            (memq prev-body-intro-kind '(calc by coloneq-by coloneq)))
@@ -1242,6 +1427,11 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
       (pcase prev-body-intro-kind
         ('bare-have-suffices
          (+ prev-indent step))
+        ('where
+         (if (and anchor-pos
+                  (lean4-indent--line-top-level-declaration-head-p anchor-text))
+             (+ anchor-indent step)
+           (+ prev-indent step)))
         ('coloneq-by
          (cond
           (prev-calc-body-indent)
@@ -1321,6 +1511,7 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
            (= prev-indent anchor-term-body-indent)
            (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  '(atom application))
+           (not prev-closes-paren)
            (not (and starts-with-paren
                      prev-pos
                      prev-closes-paren))
@@ -1359,6 +1550,23 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
                  '(atom application))
            (lean4-indent--line-starts-structured-term-p current-text))
       (+ prev-indent step))
+     ;; 7.8) Local let/have values that started inline keep their continuation column.
+     ((and (string-match-p
+            "\\`[ \t]*\\(?:let\\|have\\)\\_>.*:=\\s-*\\S-+"
+            prev-text-no-comment)
+           (not starts-with-branch)
+           (not starts-with-focus)
+           (not (string-match-p ":=\\s-*{" prev-text-no-comment))
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma))
+      (if (and starts-with-paren
+               anchor-pos
+               (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
+               (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
+          prev-indent
+        (if (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+            (+ prev-indent step)
+          prev-indent)))
      ;; 8) Anonymous literal ⟨…⟩
      ((and prev-unmatched-angle
            starts-with-paren
@@ -1438,6 +1646,23 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
       (if (and prev-pos (lean4-indent--line-starts-with-calc-step-p prev-text))
           (+ prev-indent (* 2 step))
         (+ prev-indent step)))
+     ;; 10.4) Local let/have values that already started inline keep their continuation column.
+     ((and (string-match-p
+            "\\`[ \t]*\\(?:let\\|have\\)\\_>.*:=\\s-*\\S-+"
+            prev-text-no-comment)
+           (not starts-with-branch)
+           (not starts-with-focus)
+           (not (string-match-p ":=\\s-*{" prev-text-no-comment))
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma))
+      (if (and starts-with-paren
+               anchor-pos
+               (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
+               (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
+          prev-indent
+        (if (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+            (+ prev-indent step)
+          prev-indent)))
      ;; 10.6) Continuation of a multiline `show` proposition aligns under `show`.
      ((and prev-pos
            (lean4-indent--show-body-column prev-text-no-comment)
@@ -1474,11 +1699,41 @@ the first line that introduces the declaration body, such as `:=', `:= by', or
                (and prev-ends-with-bracket
                     (not (string-match-p "\\]\\s-*$" current-text))))
            prev-closes-paren)
-      (let* ((anchor-text (lean4-indent--line-text anchor-pos))
+      (let* ((matching-open-pos
+              (and prev-ends-with-brace
+                   (lean4-indent--matching-open-delimiter-pos-at-eol prev-pos)))
+             (matching-open-is-brace
+              (and matching-open-pos
+                   (eq (char-after matching-open-pos) ?{)))
+             (matching-open-line-pos
+              (and matching-open-is-brace
+                   (save-excursion
+                     (goto-char matching-open-pos)
+                     (line-beginning-position))))
+             (matching-open-line-indent
+              (and matching-open-line-pos
+                   (lean4-indent--line-indent matching-open-line-pos)))
+             (matching-open-parent
+              (and matching-open-line-pos
+                   (lean4-indent--find-anchor
+                    matching-open-line-pos matching-open-line-indent)))
+             (anchor-text (lean4-indent--line-text anchor-pos))
              (anchor-parent (lean4-indent--find-anchor anchor-pos anchor-indent)))
-        (if (lean4-indent--starts-with-p anchor-text "{")
-            (if anchor-parent (cdr anchor-parent) 0)
-          anchor-indent)))
+        (cond
+         (matching-open-parent
+          (cdr matching-open-parent))
+         ((lean4-indent--starts-with-p anchor-text "{")
+          (if anchor-parent (cdr anchor-parent) 0))
+         (t
+          anchor-indent))))
+     ;; 11.3) Dedent after a parenthesized continuation line belonging to inline let/have.
+     ((and prev-pos
+           anchor-pos
+           prev-starts-with-paren-closed
+           (string-match-p
+            "\\`[ \t]*\\(?:let\\|have\\)\\_>.*:=\\s-*\\S-+"
+            anchor-text-no-comment))
+      anchor-indent)
      ;; 11.4) Dedent after exact before a simp-like line in nested by blocks.
      ((and nested-by-candidate-p
            (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-exact)
@@ -1546,17 +1801,15 @@ accepted.  Outside tactic blocks this returns nil."
          (prev-pos (lean4-indent--prev-nonblank))
          (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
          (step lean4-indent-offset)
-         (top-body-intro-kind
-          (and prev-pos
-               (lean4-indent--top-level-declaration-body-intro-kind prev-pos)))
+         (top-level-context (and prev-pos
+                                 (lean4-indent--top-level-context prev-pos step)))
+         (top-body-intro-kind (plist-get top-level-context :body-intro-kind))
          (anchor
           (lean4-indent--find-enclosing-body-intro-anchor
            prev-pos prev-indent '(by coloneq-by)))
          (anchor-pos (car-safe anchor))
          (anchor-indent (if anchor (cdr anchor) 0))
-         (prev-top-level-body-indent
-          (and prev-pos
-               (lean4-indent--top-level-anchor-body-indent prev-pos step))))
+         (prev-top-level-body-indent (plist-get top-level-context :body-indent)))
     (or (and current-tactic-body-line-p
              anchor-pos
              (> current 0)
@@ -1593,6 +1846,26 @@ accepted.  Outside tactic blocks this returns nil."
     (indent-line-to (max 0 target))
     (when eolp
       (end-of-line))))
+
+(defun lean4-indent-region-function (start end)
+  "Indent nonblank lines between START and END using Lean 4 rules.
+
+This is a region-aware companion to `lean4-indent-line-function'.  It uses a
+single forward pass to cache enclosing top-level declaration context, avoiding
+repeated whole-declaration rescans near the end of large files."
+  (let ((end-marker (copy-marker end))
+        (lean4-indent--region-top-level-contexts
+         (lean4-indent--build-top-level-context-cache lean4-indent-offset))
+        (lean4-indent--region-line-contexts
+         (lean4-indent--build-region-line-context-cache)))
+    (save-excursion
+      (goto-char start)
+      (unless (bolp)
+        (forward-line 1))
+      (while (< (point) end-marker)
+        (unless (looking-at-p "[ \t]*$")
+          (indent-according-to-mode))
+        (forward-line 1)))))
 
 (provide 'lean4-indent)
 ;;; lean4-indent.el ends here
