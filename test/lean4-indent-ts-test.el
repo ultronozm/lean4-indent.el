@@ -277,12 +277,39 @@ open Bar"
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
 
+(ert-deftest lean4-indent-ts--namespace-inner-definition-snaps-left ()
+  (lean4-ts-test-with-indent-buffer
+      "namespace Foo
+  def bar : Nat := by
+    trivial"
+    (lean4-ts-test--goto-line 2)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal before "  def bar : Nat := by"))
+      (should (equal (lean4-ts-test--line-string) "def bar : Nat := by")))))
+
+(ert-deftest lean4-indent-ts--top-level-section-snaps-left ()
+  (lean4-ts-test-with-indent-buffer
+      "  section Foo"
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal before "  section Foo"))
+      (should (equal (lean4-ts-test--line-string) "section Foo")))))
+
 (ert-deftest lean4-indent-ts--top-level-public-section-line ()
   (lean4-ts-test-with-indent-buffer
       "public section Foo"
     (let ((before (lean4-ts-test--line-string)))
       (funcall #'lean4-indent-ts-line-function)
       (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--top-level-public-section-snaps-left ()
+  (lean4-ts-test-with-indent-buffer
+      "  public section Foo"
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal before "  public section Foo"))
+      (should (equal (lean4-ts-test--line-string) "public section Foo")))))
 
 (ert-deftest lean4-indent-ts--top-level-compile-inductive-line ()
   (lean4-ts-test-with-indent-buffer
