@@ -207,6 +207,22 @@ def bar : Nat := 1"
 #check Nat.recOn"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--top-level-theorem-after-iff-intro-example ()
+  (lean4-ts-test-with-indent-buffer
+      "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)
+    (fun hnpnq: _ =>
+      have hnp := hnpnq.left
+      have hnq := hnpnq.right
+      (fun hpq: p ∨ q =>
+        hpq.elim hnp hnq))
+
+theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ (x :: t) :="
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--where-field ()
   (lean4-ts-test-with-indent-buffer
       "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
@@ -298,6 +314,14 @@ def bar : Nat := 1"
   refine
     (foo
       bar)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--nested-paren-continuation-ibp-example ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  have h_int_term2 : IntervalIntegrable
+      (fun x ↦ ((x ^ (-σ) : ℝ) : ℂ) * ↑(deriv (deriv φ) x) /
+        (2 * π * I * ↑(deriv φ x) ^ 2) * e (φ x)) volume a b := by"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--wrapped-sibling-application-argument ()
@@ -1024,6 +1048,31 @@ termination_by
     exact 1"
     (should (member "tactic_if" (lean4-ts-test--ancestor-types-at-line 2)))
     (should (member "tactic_if" (lean4-ts-test--ancestor-types-at-line 4)))))
+
+(ert-deftest lean4-indent-ts--tactic-else-if-else-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if h then
+    exact 0
+  else if h' then
+    exact 1
+  else
+    exact 2"
+    (lean4-ts-test--goto-line 6)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--tactic-else-if-else-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : Nat := by
+  if h then
+    exact 0
+  else if h' then
+    exact 1
+  else
+    exact 2"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (provide 'lean4-indent-ts-test)
 ;;; lean4-indent-ts-test.el ends here

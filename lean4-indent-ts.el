@@ -364,6 +364,11 @@ Prefer the repo-local compiled vendored grammar when present."
   "Return the nearest enclosing top-level command node for NODE."
   (lean4-indent-ts--ancestor-type node lean4-indent-ts--top-level-types))
 
+(defun lean4-indent-ts--error-context-p (node)
+  "Return non-nil when NODE is inside an `ERROR` parse subtree."
+  (and node
+       (lean4-indent-ts--ancestor-type node '("ERROR"))))
+
 (defun lean4-indent-ts--inside-tactics-p (node)
   "Return non-nil when NODE is inside a `tactics' block."
   (and node
@@ -695,7 +700,9 @@ with that grouped application, not indent one step further."
        ((or (lean4-indent-ts--line-blank-p)
             (lean4-indent-ts--line-comment-p)
             (null node))
-       nil)
+        nil)
+       ((lean4-indent-ts--error-context-p node)
+        nil)
        ((lean4-indent-ts--mutual-line-indent node))
        ((let ((top (lean4-indent-ts--top-level-command node)))
           (and top (lean4-indent-ts--top-level-line-p top)))
