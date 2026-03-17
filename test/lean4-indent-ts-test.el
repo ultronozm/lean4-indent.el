@@ -109,6 +109,23 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     (fun h2 => t2)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--wrapped-sibling-application-argument ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem Algebra.adjoin_int {R : Type*} [Ring R] (s : Set R) :
+    adjoin ℤ s = subalgebraOfSubring (Subring.closure s) :=
+  le_antisymm (adjoin_le Subring.subset_closure)
+    (Subring.closure_le.2 subset_adjoin : Subring.closure s ≤ (adjoin ℤ s).toSubring)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--anonymous-constructor-sibling-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+  Iff.intro
+    (fun hnpq: _ =>
+      ⟨(fun hp: p => (hnpq (Or.inl hp))),
+       (fun hq: q => (hnpq (Or.inr hq)))⟩)"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--fun-body ()
   (lean4-ts-test-with-indent-buffer
       "example : Nat :=

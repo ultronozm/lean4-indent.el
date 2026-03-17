@@ -120,6 +120,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   '("tactic_config")
   "Node types representing tactic config lists like `rw [a, b]'.")
 
+(defconst lean4-indent-ts--constructor-types
+  '("anonymous_constructor")
+  "Node types representing `⟨..., ...⟩` constructor terms.")
+
 (defun lean4-indent-ts-register-grammar-source ()
   "Register the configured Lean grammar source for tree-sitter installs."
   (interactive)
@@ -349,6 +353,15 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line config)))
       (+ (lean4-indent-ts--node-indent config) lean4-indent-offset))))
 
+(defun lean4-indent-ts--anonymous-constructor-indent (node)
+  "Return indentation for multiline anonymous-constructor elements, or nil."
+  (let ((ctor (lean4-indent-ts--ancestor-type node
+                                              lean4-indent-ts--constructor-types)))
+    (when (and ctor
+               (> (line-number-at-pos (line-beginning-position) t)
+                  (lean4-indent-ts--node-start-line ctor)))
+      (1+ (lean4-indent-ts--node-indent ctor)))))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -374,6 +387,7 @@ Prefer the repo-local compiled vendored grammar when present."
        ((lean4-indent-ts--calc-step-indent node))
        ((lean4-indent-ts--tactic-binding-indent node))
        ((lean4-indent-ts--tactic-config-indent node))
+       ((lean4-indent-ts--anonymous-constructor-indent node))
        ((lean4-indent-ts--inside-tactics-p node)
         nil)
        ((lean4-indent-ts--top-level-continuation-indent node))
