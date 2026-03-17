@@ -152,6 +152,13 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     x = y := by rfl"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--tactic-have-value-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  have h : Q :=
+    f x"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--adjoin-ext-parse-regression ()
   (lean4-ts-test-with-indent-buffer
       "theorem adjoin_ext {s : Set A} ⦃φ₁ φ₂ : adjoin R s →ₐ[R] B⦄
