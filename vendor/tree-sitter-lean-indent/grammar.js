@@ -65,6 +65,8 @@ module.exports = grammar({
     [$.subtype, $.field_assignment],
     [$.let, $._pattern],
     [$.parameters, $._pattern],
+    [$._quantifier_binders, $._pattern],
+    [$._quantifier_binders],
     // Fragment mode conflicts: tactics and expressions overlap when both
     // are valid top-level alternatives.  GLR resolves at runtime.
     [$.have, $._pattern],
