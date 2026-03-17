@@ -275,6 +275,15 @@ def bar : Nat := 1"
     (fun h2 => t2)"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--paren-led-named-argument-siblings ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  exact (
+    (pre := fun x => x)
+    (mid := fun x => x)
+    (post := fun x => x))"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--deep-paren-continuation-line ()
   (lean4-ts-test-with-indent-buffer
       "example : Nat :=

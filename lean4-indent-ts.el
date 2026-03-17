@@ -444,6 +444,33 @@ Prefer the repo-local compiled vendored grammar when present."
     (when apply
       (+ (lean4-indent-ts--node-indent apply) lean4-indent-offset))))
 
+(defun lean4-indent-ts--named-argument-sibling-indent (node)
+  "Return indentation for later sibling named arguments, or nil.
+
+This handles shapes like:
+
+  exact (
+    (pre := ...)
+    (mid := ...)
+    (post := ...))
+
+where the grammar groups the sibling named arguments under an `application'
+starting on the first named-argument line.  Later sibling lines should align
+with that grouped application, not indent one step further."
+  (let* ((named (lean4-indent-ts--ancestor-type node '("named_argument")))
+         (apply (and named
+                     (lean4-indent-ts--ancestor-type named '("application"))))
+         (paren (and apply
+                     (lean4-indent-ts--ancestor-type apply '("parenthesized")))))
+    (when (and named apply paren
+               (= (lean4-indent-ts--current-line)
+                  (lean4-indent-ts--node-start-line named))
+               (> (lean4-indent-ts--current-line)
+                  (lean4-indent-ts--node-start-line apply))
+               (> (lean4-indent-ts--node-start-line apply)
+                  (lean4-indent-ts--node-start-line paren)))
+      (lean4-indent-ts--node-indent apply))))
+
 (defun lean4-indent-ts--match-alt-indent (node)
   "Return indentation for a `match_alt' line, or nil."
   (let ((alt (lean4-indent-ts--ancestor-type node lean4-indent-ts--match-alt-types)))
@@ -668,11 +695,12 @@ Prefer the repo-local compiled vendored grammar when present."
        ((or (lean4-indent-ts--line-blank-p)
             (lean4-indent-ts--line-comment-p)
             (null node))
-        nil)
+       nil)
        ((lean4-indent-ts--mutual-line-indent node))
        ((let ((top (lean4-indent-ts--top-level-command node)))
           (and top (lean4-indent-ts--top-level-line-p top)))
         0)
+       ((lean4-indent-ts--named-argument-sibling-indent node))
        ((lean4-indent-ts--tactic-block-indent node))
        ((lean4-indent-ts--tactic-apply-argument-indent node))
        ((lean4-indent-ts--calc-step-indent node))
