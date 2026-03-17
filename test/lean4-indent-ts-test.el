@@ -181,6 +181,29 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     t"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--declaration-let-value-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P :=
+  let h :=
+    t
+  u"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--declaration-if-then-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P :=
+  if h then
+    t
+  else
+    u"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--match-alt-line ()
   (lean4-ts-test-with-indent-buffer
       "example : Nat :=
@@ -221,6 +244,13 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
   (lean4-ts-test-with-indent-buffer
       "theorem foo : P := by
   have h : Q :=
+    f x"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-let-value-line ()
+  (lean4-ts-test-with-indent-buffer
+      "theorem foo : P := by
+  let h :=
     f x"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 

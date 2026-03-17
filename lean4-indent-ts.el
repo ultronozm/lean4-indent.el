@@ -89,7 +89,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   "Declaration node types that carry a `body' field.")
 
 (defconst lean4-indent-ts--body-intro-types
-  '("fun" "let" "have" "if_then_else" "match")
+  '("fun" "let" "have" "if" "if_then_else" "match")
   "Expression nodes whose body usually indents one step.")
 
 (defconst lean4-indent-ts--apply-types
