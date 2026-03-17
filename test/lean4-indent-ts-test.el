@@ -893,5 +893,35 @@ end Foo"
     (should (member "tactic_apply" (lean4-ts-test--ancestor-types-at-line 11)))
     (should (member "module" (lean4-ts-test--ancestor-types-at-line 11)))))
 
+(ert-deftest lean4-indent-ts--mutual-child-line ()
+  (lean4-ts-test-with-indent-buffer
+      "mutual
+  def foo : Nat := 0
+  def bar : Nat := foo
+end"
+    (lean4-ts-test--goto-line 2)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--mutual-end-line ()
+  (lean4-ts-test-with-indent-buffer
+      "mutual
+  def foo : Nat := 0
+  def bar : Nat := foo
+end"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--mutual-parse-regression ()
+  (lean4-ts-test-with-indent-buffer
+      "mutual
+  def foo : Nat := 0
+  def bar : Nat := foo
+end"
+    (should (equal (treesit-node-type (treesit-buffer-root-node 'lean)) "module"))
+    (should (equal (treesit-node-type (treesit-node-child (treesit-buffer-root-node 'lean) 0 t))
+                   "mutual"))
+    (should (member "mutual_decl" (lean4-ts-test--ancestor-types-at-line 2)))))
+
 (provide 'lean4-indent-ts-test)
 ;;; lean4-indent-ts-test.el ends here

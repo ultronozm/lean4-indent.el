@@ -80,7 +80,7 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
   "Repo-local directory for compiled Lean tree-sitter grammar libraries.")
 
 (defconst lean4-indent-ts--top-level-types
-  '("declaration" "section" "public_section" "namespace" "open" "end"
+  '("declaration" "section" "public_section" "namespace" "mutual" "open" "end"
     "variable" "attribute" "hash_command" "compile_inductive"
     "partial_fixpoint"
     "macro_rules" "notation" "abbrev" "def" "example" "instance"
@@ -154,6 +154,10 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defconst lean4-indent-ts--macro-rule-types
   '("macro_rule")
   "Node types representing a single `macro_rules` branch.")
+
+(defconst lean4-indent-ts--mutual-child-types
+  '("mutual_decl")
+  "Node types representing direct children of a `mutual` block.")
 
 (defvar lean4-indent-ts--current-line-cache nil
   "Dynamically bound current line number during one indentation pass.")
@@ -595,6 +599,23 @@ Prefer the repo-local compiled vendored grammar when present."
                   (lean4-indent-ts--node-start-line rule)))
       (+ (lean4-indent-ts--node-indent owner) lean4-indent-offset))))
 
+(defun lean4-indent-ts--mutual-line-indent (node)
+  "Return indentation for direct `mutual` children or closing `end`, or nil."
+  (let ((mutual (lean4-indent-ts--ancestor-type node '("mutual"))))
+    (when (and mutual
+               (> (lean4-indent-ts--current-line)
+                  (lean4-indent-ts--node-start-line mutual)))
+      (cond
+       ((string-match-p "\\`[ \t]*end\\_>" (lean4-indent-ts--line-text))
+        (lean4-indent-ts--node-indent mutual))
+       ((cl-loop for i from 0 below (treesit-node-child-count mutual t)
+                 for child = (treesit-node-child mutual i t)
+                 thereis (and (member (treesit-node-type child)
+                                      lean4-indent-ts--mutual-child-types)
+                              (= (lean4-indent-ts--node-start-line child)
+                                 (lean4-indent-ts--current-line))))
+        (+ (lean4-indent-ts--node-indent mutual) lean4-indent-offset))))))
+
 (defun lean4-indent-ts--body-intro-indent (node)
   "Return indentation for a body introduced by a structural term node."
   (let ((intro (lean4-indent-ts--ancestor-type node lean4-indent-ts--body-intro-types)))
@@ -620,6 +641,7 @@ Prefer the repo-local compiled vendored grammar when present."
             (lean4-indent-ts--line-comment-p)
             (null node))
         nil)
+       ((lean4-indent-ts--mutual-line-indent node))
        ((let ((top (lean4-indent-ts--top-level-command node)))
           (and top (lean4-indent-ts--top-level-line-p top)))
         0)

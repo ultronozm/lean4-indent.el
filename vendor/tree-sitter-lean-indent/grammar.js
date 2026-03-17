@@ -72,6 +72,7 @@ module.exports = grammar({
     [$.have, $._pattern],
     [$._atom, $._name],
     [$._binding_body, $.tactic_have],
+    [$.mutual, $.end],
   ],
 
   rules: {
@@ -79,19 +80,19 @@ module.exports = grammar({
     // Module Structure
     // ============================================================
 
-    // The module rule uses `choice` with a low-precedence fragment fallback
-    // so that code snippets (hover popups, docstrings) that contain bare
-    // tactics or expressions still produce proper syntax nodes instead of
-    // ERROR nodes.  Complete modules always win via the higher-precedence
-    // branch because they start with `prelude`, `import`, or a command keyword.
+    // Prefer real module structure when commands are available, but keep
+    // fragment fallback for incomplete or snippet-style buffers.
     module: $ => choice(
+      prec(1, seq(
+        optional($.prelude),
+        repeat($.import),
+        repeat1($._command),
+      )),
       seq(
         optional($.prelude),
         repeat($.import),
         repeat($._command),
       ),
-      // Fragment fallback: a sequence of tactics and/or expressions,
-      // as seen in hover popups and docstring code blocks.
       repeat1($._fragment_element),
     ),
 
@@ -121,6 +122,7 @@ module.exports = grammar({
       )),
       // Other commands (no modifiers)
       $.namespace,
+      $.mutual,
       $.public_section,
       $.section,
       $.end,
@@ -139,6 +141,27 @@ module.exports = grammar({
 
     // Namespace: `namespace Foo` or `namespace Foo.Bar.Baz`
     namespace: $ => seq('namespace', field('name', $._name)),
+
+    mutual: $ => seq(
+      'mutual',
+      $._layout_start,
+      repeat1(seq(field('body', $.mutual_decl), optional($._layout_semicolon))),
+      optional($._layout_end),
+      'end',
+    ),
+
+    mutual_decl: $ => seq(
+      repeat($._modifier),
+      choice(
+        $.definition,
+        alias($._instance_decl, $.definition),
+        $.constant,
+        $.opaque,
+        $.axiom,
+        $.inductive,
+        $.class_inductive,
+      ),
+    ),
 
     // `public section` or `public section Foo`
     public_section: $ => seq('public', 'section', optional(field('name', $._name))),
@@ -264,11 +287,11 @@ module.exports = grammar({
 
     // Shared body production for definition and instance — factored out
     // to let the parser reuse states across both declaration forms.
-    _declaration_body: $ => choice(
+    _declaration_body: $ => prec.right(choice(
       seq(':=', $._layout_start, field('body', $._expression), optional($._layout_end)),
       seq('where', $._layout_start, repeat1(seq(field('body', $.where_decl), optional($._layout_semicolon))), optional($._layout_end)),
       repeat1($.match_arm),
-    ),
+    )),
 
     // instance — name is optional; aliased to `definition` in the parse tree.
     // Instance binders are always bracketed (no bare identifier ambiguity with name).
