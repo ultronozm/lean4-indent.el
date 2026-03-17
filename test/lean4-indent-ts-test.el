@@ -682,6 +682,20 @@ end Foo"
     exact t"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--tactic-focus-calc-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  · calc
+    exact trivial"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--tactic-focus-have-by-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "example : True := by
+  · have h : True := by
+    exact trivial"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
 (ert-deftest lean4-indent-ts--tactic-case-body-line ()
   (lean4-ts-test-with-indent-buffer
       "theorem foo : P := by
