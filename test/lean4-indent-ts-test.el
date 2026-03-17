@@ -241,6 +241,37 @@ scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction"
     pure ()"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
+(ert-deftest lean4-indent-ts--do-unless-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Unit := do
+  unless h do
+    pure ()"
+    (lean4-ts-test--reindent-final-line-and-assert-same)))
+
+(ert-deftest lean4-indent-ts--do-if-then-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Unit := do
+  if h then
+    pure ()
+  else
+    pure ()"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
+(ert-deftest lean4-indent-ts--do-try-body-line ()
+  (lean4-ts-test-with-indent-buffer
+      "def foo : M Unit := do
+  try
+    pure ()
+  catch _ =>
+    pure ()"
+    (lean4-ts-test--goto-line 3)
+    (let ((before (lean4-ts-test--line-string)))
+      (funcall #'lean4-indent-ts-line-function)
+      (should (equal (lean4-ts-test--line-string) before)))))
+
 (ert-deftest lean4-indent-ts--match-alt-line ()
   (lean4-ts-test-with-indent-buffer
       "example : Nat :=
