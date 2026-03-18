@@ -1378,13 +1378,15 @@ not inside such a declaration."
          (prev-have-suffices-p (string-match-p lean4-indent--re-have-suffices prev-text))
          (prev-coloneq-by-top-level-body-indent
           (and prev-top-level-body-indent
+               top-level-body-intro-pos
                (eq prev-pos top-level-body-intro-pos)
                (not prev-have-suffices-p)
                (not (and prev-pos
                          (lean4-indent--prev-have-suffices-p prev-pos prev-indent)))
                prev-top-level-body-indent))
          (prev-coloneq-top-level-body-indent
-          (and (eq prev-pos top-level-body-intro-pos)
+          (and top-level-body-intro-pos
+               (eq prev-pos top-level-body-intro-pos)
                (not prev-have-suffices-p)
                (not prev-starts-with-calc-step)
                (not anchor-starts-calc)
@@ -1517,6 +1519,7 @@ not inside such a declaration."
                   current-plain-body-line-p)
              (+ prev-indent (* 2 step)))
             ((and prev-top-level-body-indent
+                  top-level-body-intro-pos
                   (= prev-pos top-level-body-intro-pos)
                   (> prev-indent prev-top-level-body-indent)
                   (not (lean4-indent--line-blank-p current-text)))
