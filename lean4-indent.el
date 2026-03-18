@@ -118,7 +118,7 @@ current line."
 
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
-    "set_option" "open" "universe" "variable"
+    "grind_pattern" "set_option" "open" "universe" "variable"
     "@[" "scoped["
     "namespace" "section" "public section")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")

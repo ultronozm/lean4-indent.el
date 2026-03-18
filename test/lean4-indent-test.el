@@ -515,6 +515,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-grind-pattern ()
+  (let ((contents
+         (concat
+          "example : True := by\n"
+          "  trivial\n\n"
+          "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-have-this-theorem-from-before-file ()
   (let ((contents
          (concat
@@ -2166,7 +2175,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
 (ert-deftest lean4-indent--top-level-anchor-word-boundary ()
   (should-not (lean4-indent--line-top-level-anchor-p "define foo := 1"))
   (should (lean4-indent--line-top-level-anchor-p "def foo := 1"))
-  (should (lean4-indent--line-top-level-anchor-p "initialize_simps_projections Foo (bar → baz)")))
+  (should (lean4-indent--line-top-level-anchor-p "initialize_simps_projections Foo (bar → baz)"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
 
 (ert-deftest lean4-indent--top-level-scoped-instance-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "scoped instance foo : True := by"))
