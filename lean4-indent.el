@@ -1966,6 +1966,26 @@ Outside tactic blocks this returns nil."
          body-indent
          (>= current body-indent))))
 
+(defun lean4-indent--stable-region-body-line-p ()
+  "Return non-nil when `indent-region' will preserve the current line.
+
+This mirrors the cheap region-only preservation path for completed top-level
+declaration bodies, avoiding a full `lean4-indent--compute-indent' call for
+lines that will remain unchanged anyway."
+  (let* ((current (current-indentation))
+         (current-text (lean4-indent--line-text (point)))
+         (prev-pos (lean4-indent--prev-nonblank))
+         (step lean4-indent-offset)
+         (top-level-context (and prev-pos
+                                 (lean4-indent--top-level-context prev-pos step)))
+         (body-indent (plist-get top-level-context :body-indent)))
+    (and lean4-indent--preserve-tactic-region-indentation
+         (> current 0)
+         (not (lean4-indent--line-blank-p current-text))
+         (not (lean4-indent--line-top-level-anchor-p current-text))
+         body-indent
+         (>= current body-indent))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -2009,7 +2029,8 @@ repeated whole-declaration rescans near the end of large files."
                     (lean4-indent--comment-line-p (point))
                     (and (= (current-indentation) 0)
                          (lean4-indent--line-top-level-anchor-p
-                          (lean4-indent--line-text (point)))))
+                          (lean4-indent--line-text (point))))
+                    (lean4-indent--stable-region-body-line-p))
           (funcall indent-line-function))
         (forward-line 1)))))
 
