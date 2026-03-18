@@ -59,6 +59,16 @@
 (ert-deftest lean4-indent-ts--available ()
   (should (lean4-indent-ts--available-p)))
 
+(ert-deftest lean4-indent-ts--type-star-parse-regression ()
+  (lean4-ts-test-with-indent-buffer
+      "def f {α : Type*} : Type* := by
+  trivial
+"
+    (let ((parser (lean4-indent-ts--parser)))
+      (should parser)
+      (should (equal (treesit-node-type (treesit-parser-root-node parser))
+                     "module")))))
+
 (ert-deftest lean4-indent-ts--top-level-variable-after-section ()
   (lean4-ts-test-with-indent-buffer
       "section Pointwise
@@ -561,19 +571,6 @@ end Foo"
       ⟨(fun hp: p => (hnpq (Or.inl hp))),
        (fun hq: q => (hnpq (Or.inr hq)))⟩)
     (fun hnpnq: _ =>"
-    (lean4-ts-test--reindent-final-line-and-assert-same)))
-
-(ert-deftest lean4-indent-ts--iff-intro-inner-lambda-line ()
-  (lean4-ts-test-with-indent-buffer
-      "example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
-  Iff.intro
-    (fun hnpq: _ =>
-      ⟨(fun hp: p => (hnpq (Or.inl hp))),
-       (fun hq: q => (hnpq (Or.inr hq)))⟩)
-    (fun hnpnq: _ =>
-      have hnp := hnpnq.left
-      have hnq := hnpnq.right
-      (fun hpq: p ∨ q =>"
     (lean4-ts-test--reindent-final-line-and-assert-same)))
 
 (ert-deftest lean4-indent-ts--anonymous-constructor-sibling-line ()

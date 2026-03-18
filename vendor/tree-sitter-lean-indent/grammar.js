@@ -485,6 +485,7 @@ module.exports = grammar({
 
     // Atoms: self-delimiting expressions that can appear as function arguments
     _atom: $ => choice(
+      $.sort,
       $.identifier,
       $.escaped_identifier,
       $.number,
@@ -1177,6 +1178,11 @@ module.exports = grammar({
     // Simple identifier without dots - projection handles qualified access
     // Lean identifiers commonly use unicode subscripts in mathlib, e.g. `_a₁`.
     identifier: _ => /[_a-zA-Zα-ωΑ-Ωℕℤℚℝℂ∇][_a-zA-Z0-9'α-ωΑ-Ωℕℤℚℝℂ∇?!₀-₉ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ]*/,
+
+    // Universe sorts like `Type*`, `Sort*`, `Type**`.
+    // These occur frequently in mathlib binder annotations and should not
+    // degrade into `identifier` plus `ERROR("*")`.
+    sort: _ => token(seq(choice('Type', 'Sort'), /\*+/)),
 
     // Escaped identifier: `«name with spaces»`
     escaped_identifier: _ => /«[^»]*»/,

@@ -185,6 +185,12 @@ When non-nil, `lean4-indent-ts-register-grammar-source' adds it to
 (defvar-local lean4-indent-ts--buffer-ready nil
   "Cached non-nil when Lean tree-sitter is usable in the current buffer.")
 
+(defvar-local lean4-indent-ts--buffer-root-usable nil
+  "Cached non-nil when the current buffer's Lean parse root is usable.")
+
+(defvar-local lean4-indent-ts--buffer-root-usable-tick nil
+  "Buffer modification tick for `lean4-indent-ts--buffer-root-usable'.")
+
 (defvar lean4-indent-ts--node-start-line-cache nil
   "Dynamically bound cache of node start-line lookups during one indentation pass.")
 
@@ -233,6 +239,30 @@ Prefer the repo-local compiled vendored grammar when present."
                      (let ((treesit-extra-load-path
                             (lean4-indent-ts--extra-load-path)))
                        (treesit-ready-p 'lean t)))))))
+
+(defun lean4-indent-ts--parser ()
+  "Return the Lean tree-sitter parser for the current buffer, or nil."
+  (cl-find-if (lambda (parser)
+                (eq (treesit-parser-language parser) 'lean))
+              (treesit-parser-list)))
+
+(defun lean4-indent-ts--root-usable-p ()
+  "Return non-nil when the current buffer's Lean parse root is usable.
+
+Buffers whose parse root is already `ERROR' are treated as unsuitable for
+tree-sitter indentation, so the indenter falls back immediately instead of
+retrying on every line."
+  (and (lean4-indent-ts--available-p)
+       (let ((tick (buffer-chars-modified-tick)))
+         (if (eq tick lean4-indent-ts--buffer-root-usable-tick)
+             lean4-indent-ts--buffer-root-usable
+           (setq lean4-indent-ts--buffer-root-usable-tick tick)
+           (setq lean4-indent-ts--buffer-root-usable
+                 (let ((parser (or (lean4-indent-ts--parser)
+                                   (treesit-parser-create 'lean))))
+                   (let ((root (and parser (treesit-parser-root-node parser))))
+                     (and root
+                          (not (string= (treesit-node-type root) "ERROR"))))))))))
 
 (defun lean4-indent-ts--line-start-pos ()
   "Return the first nonblank position on the current line, or line start."
@@ -1010,7 +1040,7 @@ with that grouped application, not indent one step further."
 
 (defun lean4-indent-ts--compute-indent ()
   "Return tree-sitter-based indentation for the current line, or nil."
-  (when (lean4-indent-ts--available-p)
+  (when (lean4-indent-ts--root-usable-p)
     (let* ((lean4-indent-ts--current-line-cache
             (line-number-at-pos (line-beginning-position) t))
            (lean4-indent-ts--ancestor-cache (make-hash-table :test 'equal))
@@ -1028,6 +1058,8 @@ with that grouped application, not indent one step further."
               (lean4-indent-ts--line-comment-p)
               (null node))
           nil)
+         ((and (string= (treesit-node-type node) "ERROR")
+               (lean4-indent-ts--open-paren-body-indent node)))
          ((lean4-indent-ts--error-context-p node)
           nil)
          ((lean4-indent-ts--mutual-line-indent node))
