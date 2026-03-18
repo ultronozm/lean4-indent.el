@@ -26,9 +26,7 @@
 ;;
 ;; To use it, call `lean4-indent-setup-buffer' in a `lean4-mode-hook':
 ;;
-;;   (add-hook 'lean4-mode-hook
-;;             (lambda ()
-;;               (lean4-indent-setup-buffer)))
+;;   (add-hook 'lean4-mode-hook #'lean4-indent-setup-buffer)
 ;;
 ;; Optional bindings:
 ;;
@@ -119,7 +117,8 @@ current line."
   "Keywords treated as simp-like tactics.")
 
 (defconst lean4-indent--top-level-anchors
-  '("attribute" "add_decl_doc" "compile_inductive" "set_option" "open" "universe" "variable"
+  '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
+    "set_option" "open" "universe" "variable"
     "@[" "scoped["
     "namespace" "section" "public section")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
@@ -493,7 +492,7 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
   (string-match-p
-   "\\`[ \t]*\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
+   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
    text))
 
 (defun lean4-indent--line-top-level-anchor-p (text)

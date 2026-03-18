@@ -489,6 +489,32 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-initialize-simps-from-before-file ()
+  (let ((contents
+         (concat
+          "instance : SetLike (Subalgebra R A) A where\n"
+          "  coe s := s.carrier\n"
+          "  coe_injective' p q h := by cases p; cases q; congr; exact SetLike.coe_injective' h\n\n"
+          "initialize_simps_projections Subalgebra (carrier → coe, as_prefix coe)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-scoped-instance-from-before-file ()
+  (let ((contents
+         (concat
+          "theorem foo : True := by\n"
+          "  trivial\n\n"
+          "scoped instance isScalarTower_right (X) [MulAction A X] :\n"
+          "    letI := (inclusion h).toModule; IsScalarTower S T X :=\n"
+          "  letI := (inclusion h).toModule; ⟨fun _ ↦ mul_smul _⟩\n\n"
+          "scoped instance faithfulSMul :\n"
+          "    letI := (inclusion h).toModule; FaithfulSMul S T :=\n"
+          "  letI := (inclusion h).toModule\n"
+          "  ⟨fun {x y} h ↦ Subtype.ext <| by\n"
+          "    exact h⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-have-this-theorem-from-before-file ()
   (let ((contents
          (concat
@@ -2139,7 +2165,12 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
 
 (ert-deftest lean4-indent--top-level-anchor-word-boundary ()
   (should-not (lean4-indent--line-top-level-anchor-p "define foo := 1"))
-  (should (lean4-indent--line-top-level-anchor-p "def foo := 1")))
+  (should (lean4-indent--line-top-level-anchor-p "def foo := 1"))
+  (should (lean4-indent--line-top-level-anchor-p "initialize_simps_projections Foo (bar → baz)")))
+
+(ert-deftest lean4-indent--top-level-scoped-instance-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p "scoped instance foo : True := by"))
+  (should (lean4-indent--line-top-level-anchor-p "scoped instance foo : True := by")))
 
 (ert-deftest lean4-indent--block-comment-recovery ()
   (lean4-test-with-indent-buffer
