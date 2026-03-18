@@ -2005,8 +2005,12 @@ repeated whole-declaration rescans near the end of large files."
       (unless (bolp)
         (forward-line 1))
       (while (< (point) end-marker)
-        (unless (looking-at-p "[ \t]*$")
-          (indent-according-to-mode))
+        (unless (or (looking-at-p "[ \t]*$")
+                    (lean4-indent--comment-line-p (point))
+                    (and (= (current-indentation) 0)
+                         (lean4-indent--line-top-level-anchor-p
+                          (lean4-indent--line-text (point)))))
+          (funcall indent-line-function))
         (forward-line 1)))))
 
 (provide 'lean4-indent)
