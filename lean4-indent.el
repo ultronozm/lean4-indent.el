@@ -99,6 +99,9 @@ current line."
 (defvar lean4-indent--region-line-contexts nil
   "Dynamically bound per-line context cache for `lean4-indent-region-function'.")
 
+(defvar lean4-indent--preserve-tactic-region-indentation nil
+  "Dynamically non-nil when region indentation should preserve tactic layout.")
+
 ;;;###autoload
 (defun lean4-indent-setup-buffer ()
   "Install Lean 4 line and region indentation functions in the current buffer."
@@ -324,6 +327,24 @@ current line."
     (goto-char pos)
     (end-of-line)
     (nth 1 (syntax-ppss))))
+
+(defun lean4-indent--last-unmatched-open-brace-pos (pos)
+  "Return the position of the last unmatched `{` on line POS, or nil."
+  (save-excursion
+    (goto-char pos)
+    (let ((stack nil)
+          (end (line-end-position)))
+      (while (< (point) end)
+        (let* ((ppss (syntax-ppss (point)))
+               (in-str (nth 3 ppss))
+               (in-com (nth 4 ppss))
+               (ch (char-after)))
+          (unless (or in-str in-com)
+            (cond
+             ((eq ch ?{) (push (point) stack))
+             ((eq ch ?}) (when stack (pop stack))))))
+        (forward-char 1))
+      (car stack))))
 
 (defun lean4-indent--matching-open-delimiter-pos-at-eol (pos)
   "Return the matching opener for the last delimiter on line POS, or nil."
@@ -784,20 +805,31 @@ Return a plist with:
 OPEN-PAREN-POS and OPEN-PAREN-COL describe the opener, and STEP is the current
 indentation step.  If the opener shares its line with earlier text, indent from
 the line; otherwise indent from the delimiter column."
-  (let* ((open-line-indent (and open-paren-pos
-                                (save-excursion
-                                  (goto-char open-paren-pos)
-                                  (current-indentation))))
-         (open-line-prefix (and open-paren-pos
-                                (save-excursion
-                                  (goto-char open-paren-pos)
-                                  (buffer-substring-no-properties
-                                   (line-beginning-position) open-paren-pos))))
-         (open-line-has-text (and open-line-prefix
-                                  (string-match-p "[^ \t]" open-line-prefix))))
-    (if open-line-has-text
-        (+ open-line-indent step)
-      (+ open-paren-col step))))
+  (let* ((open-line-indent
+          (and open-paren-pos
+               (save-excursion
+                 (goto-char open-paren-pos)
+                 (current-indentation))))
+         (open-line-prefix
+          (and open-paren-pos
+               (save-excursion
+                 (goto-char open-paren-pos)
+                 (buffer-substring-no-properties
+                  (line-beginning-position) open-paren-pos))))
+         (open-line-has-real-text
+          (and open-line-prefix
+               (string-match-p "[^ \t(\\[{⟨]" open-line-prefix)))
+         (open-line-has-only-delimiters
+          (and open-line-prefix
+               (string-match-p "[^ \t]" open-line-prefix)
+               (not open-line-has-real-text))))
+    (cond
+     ((and open-line-has-only-delimiters open-paren-col)
+      (+ open-paren-col step))
+     (open-line-has-real-text
+      (+ open-line-indent step))
+     (t
+      (+ open-paren-col step)))))
 
 ;;; Anchor helpers
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
@@ -1275,16 +1307,31 @@ not inside such a declaration."
          (open-paren-col-prev (and prev-pos (lean4-indent--open-paren-col-at-eol prev-pos)))
          (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
          (open-paren-char-prev (and open-paren-pos-prev (char-after open-paren-pos-prev)))
+         (prev-unmatched-brace-pos
+          (and prev-pos (lean4-indent--last-unmatched-open-brace-pos prev-pos)))
+         (prev-unmatched-brace-col
+          (and prev-unmatched-brace-pos
+               (save-excursion
+                 (goto-char prev-unmatched-brace-pos)
+                 (current-column))))
+         (prev-unmatched-brace-body-indent
+          (and prev-unmatched-brace-pos prev-unmatched-brace-col
+               (lean4-indent--open-delimited-body-indent
+                prev-unmatched-brace-pos prev-unmatched-brace-col step)))
          (starts-with-branch (lean4-indent--branch-line-p current-text))
          (starts-with-focus (lean4-indent--focus-dot-line-p current-text))
          (current-is-underscore-paren (string= current-trim "_)"))
          (starts-with-paren (or (lean4-indent--line-starts-with-paren-p current-text)
                                 current-is-underscore-paren))
          (starts-with-closing (lean4-indent--line-starts-with-closing-p current-text))
+         (current-body-intro-kind
+          (lean4-indent--line-body-intro-kind
+           (lean4-indent--line-text-no-comment (point))))
          (current-plain-body-line-p
           (and (not starts-with-paren)
                (not starts-with-branch)
-               (not starts-with-focus)))
+               (not starts-with-focus)
+               (not starts-with-closing)))
          (prev-starts-with-paren (lean4-indent--line-starts-with-paren-p prev-text))
          (prev-starts-with-focus (lean4-indent--focus-dot-line-p prev-text))
          (prev-starts-with-calc-step (lean4-indent--line-starts-with-calc-step-p prev-text))
@@ -1301,6 +1348,11 @@ not inside such a declaration."
                                        (goto-char prev-pos)
                                        (lean4-indent--prev-nonblank))))
          (prevprev-text (if prevprev-pos (lean4-indent--line-text prevprev-pos) ""))
+         (prevprev-indent (if prevprev-pos (lean4-indent--line-indent prevprev-pos) 0))
+         (prevprev-body-intro-kind
+          (and prevprev-pos
+               (lean4-indent--line-body-intro-kind
+                (lean4-indent--line-text-no-comment prevprev-pos))))
          (prev-label-colon (lean4-indent--label-colon-line-p prev-text))
          (prev-unmatched-angle (and prev-pos (lean4-indent--line-unmatched-angle-p prev-pos)))
          (prev-ends-with-brace (and prev-pos (string-match-p "[)}⟩]\\s-*$" prev-text)))
@@ -1413,7 +1465,10 @@ not inside such a declaration."
      ((eq prev-body-intro-kind 'colon)
       (cond
        (prev-continuation-p prev-indent)
-       (prev-label-colon (+ prev-indent step))
+       ((or prev-label-colon
+            (string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\|let\\)\\_>"
+                            prev-text-no-comment))
+        (+ prev-indent step))
        (t (+ prev-indent (* 2 step)))))
      ;; 4.25) Local let/have lines with an inline := term keep continuation aligned.
      ((and (eq prev-body-intro-kind 'coloneq)
@@ -1434,10 +1489,11 @@ not inside such a declaration."
         ('bare-have-suffices
          (+ prev-indent step))
         ('where
-         (if (and anchor-pos
-                  (lean4-indent--line-top-level-declaration-head-p anchor-text))
-             (+ anchor-indent step)
-           (+ prev-indent step)))
+         (or prev-top-level-body-indent
+             (if (and anchor-pos
+                      (lean4-indent--line-top-level-declaration-head-p anchor-text))
+                 (+ anchor-indent step)
+               (+ prev-indent step))))
         ('coloneq-by
          (cond
           (prev-calc-body-indent)
@@ -1456,11 +1512,20 @@ not inside such a declaration."
          (if (lean4-indent--starts-with-p current-text ":=")
              prev-indent
            (cond
+            ((and prev-unmatched-brace-pos
+                  (string-match-p ":=\\s-*$" prev-text-no-comment)
+                  current-plain-body-line-p)
+             (+ prev-indent (* 2 step)))
+            ((and prev-top-level-body-indent
+                  (= prev-pos top-level-body-intro-pos)
+                  (> prev-indent prev-top-level-body-indent)
+                  (not (lean4-indent--line-blank-p current-text)))
+             prev-top-level-body-indent)
+            (prev-coloneq-top-level-body-indent)
             ((and prev-starts-with-paren
                   (not (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
              (+ prev-indent step))
             (prev-calc-body-indent)
-            (prev-coloneq-top-level-body-indent)
             (prev-starts-with-calc-step
              (+ prev-indent step))
             (anchor-starts-calc
@@ -1494,6 +1559,18 @@ not inside such a declaration."
          (cond
           ((string-match-p lean4-indent--re-classical-exact-fun prev-text)
            (+ prev-indent (* 2 step)))
+          ((and (lean4-indent--line-starts-with-fun-form-p prev-text)
+                (string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\)\\_>"
+                                anchor-text-no-comment)
+                (= prev-indent (+ anchor-indent step))
+                (not (lean4-indent--line-blank-p current-text)))
+           prev-indent)
+          ((and (lean4-indent--line-starts-with-fun-form-p prev-text)
+                prev-top-level-body-indent
+                (= prev-indent prev-top-level-body-indent)
+                (memq top-level-body-intro-kind '(coloneq coloneq-by))
+                (not (lean4-indent--line-blank-p current-text)))
+           prev-indent)
           ((and anchor-pos
                 (lean4-indent--line-top-level-declaration-head-p anchor-text)
                 (= prev-indent (+ anchor-indent (* 2 step)))
@@ -1510,9 +1587,41 @@ not inside such a declaration."
                 (lean4-indent--line-blank-p current-text))
            prev-indent)
           (t (+ prev-indent step))))
+        ('fat-arrow
+         (cond
+          ((and (string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\)\\_>"
+                                anchor-text-no-comment)
+                (= prev-indent (+ anchor-indent step))
+                (not (lean4-indent--line-blank-p current-text)))
+           prev-indent)
+          ((and prev-top-level-body-indent
+                (lean4-indent--line-starts-with-fun-form-p prev-text)
+                (= prev-indent prev-top-level-body-indent)
+                (memq top-level-body-intro-kind '(coloneq coloneq-by))
+                (not (lean4-indent--line-blank-p current-text)))
+           prev-indent)
+          (t (+ prev-indent step))))
         (_
          (+ prev-indent step))))
+     ;; 7.4) Structure field bodies and siblings inside an open `{ ... }` literal.
+     ((and prev-pos
+           current-plain-body-line-p
+           prev-unmatched-brace-body-indent
+           (string-match-p ":=" prev-text-no-comment))
+      (if (string-match-p ":=\\s-*$" prev-text-no-comment)
+          (+ prev-unmatched-brace-body-indent step)
+        (if (or (lean4-indent--line-blank-p current-text)
+                (string-match-p ":=" (lean4-indent--line-text-no-comment (point))))
+            prev-unmatched-brace-body-indent
+          (+ prev-unmatched-brace-body-indent step))))
      ;; 7.5) Continue a simple head term when an enclosing anchor already expects one term.
+     ((and prev-top-level-body-indent
+           (eq top-level-body-intro-kind 'colon)
+           (= prev-indent (+ prev-top-level-body-indent step))
+           (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 '(atom application))
+           starts-with-paren)
+      (+ prev-indent step))
      ((and anchor-term-body-indent
            (= prev-indent anchor-term-body-indent)
            (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
@@ -1740,6 +1849,18 @@ not inside such a declaration."
             "\\`[ \t]*\\(?:let\\|have\\)\\_>.*:=\\s-*\\S-+"
             anchor-text-no-comment))
       anchor-indent)
+     ;; 11.35) After a local `have`/`suffices := fun ... =>` body, dedent to the sibling column.
+     ((and anchor-pos
+           (string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\)\\_>"
+                           anchor-text-no-comment)
+           (= prev-indent (+ anchor-indent step))
+           (= prevprev-indent prev-indent)
+           (eq prevprev-body-intro-kind 'fat-arrow)
+           current-plain-body-line-p
+           (not prev-body-intro-kind)
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma))
+      anchor-indent)
      ;; 11.4) Dedent after exact before a simp-like line in nested by blocks.
      ((and nested-by-candidate-p
            (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-exact)
@@ -1797,8 +1918,8 @@ not inside such a declaration."
   "Return non-nil if CURRENT is acceptable inside a tactic block.
 
 This is intentionally permissive only for non-TAB reindentation: any
-indent between the enclosing `by`/`:= by` anchor and COMPUTED is
-accepted.  Outside tactic blocks this returns nil."
+indent at or beyond the enclosing `by`/`:= by` anchor is accepted.
+Outside tactic blocks this returns nil."
   (let* ((current-text (lean4-indent--line-text (point)))
          (current-trim (string-trim current-text))
          (current-tactic-body-line-p
@@ -1819,19 +1940,31 @@ accepted.  Outside tactic blocks this returns nil."
     (or (and current-tactic-body-line-p
              anchor-pos
              (> current 0)
-             (<= anchor-indent current)
-             (<= current computed))
+             (<= anchor-indent current))
         (and current-tactic-body-line-p
              (eq top-body-intro-kind 'coloneq-by)
              prev-top-level-body-indent
              (> current 0)
-             (<= prev-top-level-body-indent current)
-             (<= current computed))
+             (<= prev-top-level-body-indent current))
         (and current-tactic-body-line-p
              (lean4-indent--focus-dot-line-p current-text)
              prev-top-level-body-indent
-             (= current prev-top-level-body-indent)
-             (<= current computed)))))
+             (= current prev-top-level-body-indent)))))
+
+(defun lean4-indent--acceptable-region-body-indent-p (computed current)
+  "Return non-nil if CURRENT should be preserved during region indentation."
+  (let* ((prev-pos (lean4-indent--prev-nonblank))
+         (step lean4-indent-offset)
+         (top-level-context (and prev-pos
+                                 (lean4-indent--top-level-context prev-pos step)))
+         (body-indent (plist-get top-level-context :body-indent))
+         (current-text (lean4-indent--line-text (point))))
+    (and lean4-indent--preserve-tactic-region-indentation
+         (> current 0)
+         (not (lean4-indent--line-blank-p current-text))
+         (not (lean4-indent--line-top-level-anchor-p current-text))
+         body-indent
+         (>= current body-indent))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
@@ -1840,12 +1973,14 @@ accepted.  Outside tactic blocks this returns nil."
          (current (current-indentation))
          (tabp (eq this-command 'indent-for-tab-command))
          (target (cond
-                  ((and tabp (eq last-command 'indent-for-tab-command))
+                 ((and tabp (eq last-command 'indent-for-tab-command))
                    (lean4-indent--cycle-indent computed current))
-                  ((and (not tabp)
+                 ((and (not tabp)
                         (> current 0)
-                        (< current computed)
-                        (lean4-indent--acceptable-tactic-indent-p computed current))
+                        (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
+                                 (or (< current computed)
+                                     lean4-indent--preserve-tactic-region-indentation))
+                            (lean4-indent--acceptable-region-body-indent-p computed current)))
                    current)
                   (t computed)))
          (eolp (eolp)))
@@ -1863,7 +1998,8 @@ repeated whole-declaration rescans near the end of large files."
         (lean4-indent--region-top-level-contexts
          (lean4-indent--build-top-level-context-cache lean4-indent-offset))
         (lean4-indent--region-line-contexts
-         (lean4-indent--build-region-line-context-cache)))
+         (lean4-indent--build-region-line-context-cache))
+        (lean4-indent--preserve-tactic-region-indentation t))
     (save-excursion
       (goto-char start)
       (unless (bolp)

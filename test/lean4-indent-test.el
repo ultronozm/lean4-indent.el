@@ -84,6 +84,12 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test--insert-line-below-and-indent (car pair))
     (should (equal (lean4-test--line-string) (cadr pair)))))
 
+(defun lean4-test--indent-region-and-assert-same ()
+  "Indent the whole buffer and assert it stays unchanged."
+  (let ((before (buffer-string)))
+    (indent-region (point-min) (point-max))
+    (should (equal (buffer-string) before))))
+
 (defun lean4-test--tab-indent ()
   "Call `indent-line-function' as if invoked by `indent-for-tab-command'."
   (let ((this-command 'indent-for-tab-command))
@@ -453,9 +459,134 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "    (Set.iUnion_subset fun _ ↦ le_iSup S _)\n"
           "  this.symm ▸ rfl\n")))
     (lean4-test-with-indent-buffer contents
-      (let ((before (buffer-string)))
-        (indent-region (point-min) (point-max))
-        (should (equal (buffer-string) before))))))
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-canlift-where-body-from-before-file ()
+  (let ((contents
+         (concat
+          "instance (priority := 100) : CanLift (Set A) (NonUnitalStarSubalgebra R A) (↑)\n"
+          "    (fun s ↦ 0 ∈ s ∧ (∀ {x y}, x ∈ s → y ∈ s → x + y ∈ s) ∧ (∀ {x y}, x ∈ s → y ∈ s → x * y ∈ s) ∧\n"
+          "      (∀ (r : R) {x}, x ∈ s → r • x ∈ s) ∧ ∀ {x}, x ∈ s → star x ∈ s) where\n"
+          "  prf s h :=\n"
+          "    ⟨ { carrier := s\n"
+          "        zero_mem' := h.1\n"
+          "        add_mem' := h.2.1\n"
+          "        mul_mem' := h.2.2.1\n"
+          "        smul_mem' := h.2.2.2.1\n"
+          "        star_mem' := h.2.2.2.2 },\n"
+          "      rfl ⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-injective-theorem-from-before-file ()
+  (let ((contents
+         (concat
+          "theorem toNonUnitalSubalgebra_injective :\n"
+          "    Function.Injective\n"
+          "      (toNonUnitalSubalgebra : NonUnitalStarSubalgebra R A → NonUnitalSubalgebra R A) :=\n"
+          "  fun S T h =>\n"
+          "  ext fun x => by rw [← mem_toNonUnitalSubalgebra, ← mem_toNonUnitalSubalgebra, h]\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-have-this-theorem-from-before-file ()
+  (let ((contents
+         (concat
+          "theorem star_adjoin_comm (s : Set A) :\n"
+          "    star (NonUnitalAlgebra.adjoin R s) = NonUnitalAlgebra.adjoin R (star s) :=\n"
+          "  have this :\n"
+          "    ∀ t : Set A, NonUnitalAlgebra.adjoin R (star t) ≤ star (NonUnitalAlgebra.adjoin R t) := fun _ =>\n"
+          "    NonUnitalAlgebra.adjoin_le fun _ hx => NonUnitalAlgebra.subset_adjoin R hx\n"
+          "  le_antisymm (by simpa only [star_star] using NonUnitalSubalgebra.star_mono (this (star s)))\n"
+          "    (this s)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-iunionlift-structure-literal-from-before-file ()
+  (let ((contents
+         (concat
+          "noncomputable def iSupLift [Nonempty ι] (K : ι → NonUnitalStarSubalgebra R A)\n"
+          "    (dir : Directed (· ≤ ·) K) (f : ∀ i, K i →⋆ₙₐ[R] B)\n"
+          "    (hf : ∀ (i j : ι) (h : K i ≤ K j), f i = (f j).comp (inclusion h))\n"
+          "    (T : NonUnitalStarSubalgebra R A) (hT : T = iSup K) : ↥T →⋆ₙₐ[R] B := by\n"
+          "  subst hT\n"
+          "  exact\n"
+          "    { toFun :=\n"
+          "        Set.iUnionLift (fun i => ↑(K i)) (fun i x => f i x)\n"
+          "          (fun i j x hxi hxj => by\n"
+          "            let ⟨k, hik, hjk⟩ := dir i j\n"
+          "            simp only\n"
+          "            rw [hf i k hik, hf j k hjk]\n"
+          "            rfl)\n"
+          "          _ (by rw [coe_iSup_of_directed dir])\n"
+          "      map_zero' := by\n"
+          "        dsimp only [SetLike.coe_sort_coe, NonUnitalAlgHom.coe_comp, Function.comp_apply,\n"
+          "          inclusion_mk, Eq.ndrec, id_eq, eq_mpr_eq_cast]\n"
+          "        exact Set.iUnionLift_const _ (fun i : ι => (0 : K i)) (fun _ => rfl) _ (by simp)\n"
+          "      map_mul' := by\n"
+          "        dsimp only [SetLike.coe_sort_coe, NonUnitalAlgHom.coe_comp, Function.comp_apply,\n"
+          "          inclusion_mk, Eq.ndrec, id_eq, eq_mpr_eq_cast, ZeroMemClass.coe_zero,\n"
+          "          AddSubmonoid.mk_add_mk, Set.inclusion_mk]\n"
+          "        apply Set.iUnionLift_binary (coe_iSup_of_directed dir) dir _ (fun _ => (· * ·))\n"
+          "        all_goals simp\n"
+          "      map_add' := by\n"
+          "        dsimp only [SetLike.coe_sort_coe, NonUnitalAlgHom.coe_comp, Function.comp_apply,\n"
+          "          inclusion_mk, Eq.ndrec, id_eq, eq_mpr_eq_cast]\n"
+          "        apply Set.iUnionLift_binary (coe_iSup_of_directed dir) dir _ (fun _ => (· + ·))\n"
+          "        all_goals simp\n"
+          "      map_smul' := fun r => by\n"
+          "        dsimp only [SetLike.coe_sort_coe, NonUnitalAlgHom.coe_comp, Function.comp_apply,\n"
+          "          inclusion_mk, Eq.ndrec, id_eq, eq_mpr_eq_cast]\n"
+          "        apply Set.iUnionLift_unary (coe_iSup_of_directed dir) _ (fun _ x => r • x)\n"
+          "          (fun _ _ => rfl)\n"
+          "        all_goals simp\n"
+          "      map_star' := by\n"
+          "        dsimp only [SetLike.coe_sort_coe, NonUnitalStarAlgHom.comp_apply, inclusion_mk, Eq.ndrec,\n"
+          "          id_eq, eq_mpr_eq_cast, ZeroMemClass.coe_zero, AddSubmonoid.mk_add_mk, Set.inclusion_mk,\n"
+          "          MulMemClass.mk_mul_mk, NonUnitalAlgHom.toDistribMulActionHom_eq_coe,\n"
+          "          DistribMulActionHom.toFun_eq_coe, NonUnitalAlgHom.coe_toDistribMulActionHom,\n"
+          "          NonUnitalAlgHom.coe_mk]\n"
+          "        apply Set.iUnionLift_unary (coe_iSup_of_directed dir) _ (fun _ x => star x)\n"
+          "          (fun _ _ => rfl)\n"
+          "        all_goals simp [map_star] }\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-wrapped-relation-proof-line-from-before-file ()
+  (let ((contents
+         (concat
+          "@[simp, norm_cast]\n"
+          "theorem coe_range (φ : F) :\n"
+          "    ((NonUnitalStarAlgHom.range φ : NonUnitalStarSubalgebra R B) : Set B) =\n"
+          "    Set.range (φ : A → B) := by\n"
+          "  rfl\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-show-from-proof-from-before-file ()
+  (let ((contents
+         (concat
+          "theorem adjoin_eq_starClosure_adjoin (s : Set A) :\n"
+          "    adjoin R s = (NonUnitalAlgebra.adjoin R s).starClosure :=\n"
+          "  toNonUnitalSubalgebra_injective <| show\n"
+          "    NonUnitalAlgebra.adjoin R (s ∪ star s) =\n"
+          "      NonUnitalAlgebra.adjoin R s ⊔ star (NonUnitalAlgebra.adjoin R s)\n"
+          "    from\n"
+          "      (NonUnitalSubalgebra.star_adjoin_comm R s).symm ▸ NonUnitalAlgebra.adjoin_union s (star s)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-have-body-line-from-before-file ()
+  (let ((contents
+         (concat
+          "instance _root_.NonUnitalStarAlgHom.subsingleton [Subsingleton (NonUnitalStarSubalgebra R A)] :\n"
+          "    Subsingleton (A →⋆ₙₐ[R] B) :=\n"
+          "  ⟨fun f g => NonUnitalStarAlgHom.ext fun a =>\n"
+          "    have : a ∈ (⊥ : NonUnitalStarSubalgebra R A) :=\n"
+          "      Subsingleton.elim (⊤ : NonUnitalStarSubalgebra R A) ⊥ ▸ mem_top\n"
+          "    (mem_bot.mp this).symm ▸ (map_zero f).trans (map_zero g).symm⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
 
 (ert-deftest lean4-indent--non-tab-reindent-still-normalizes-term-code ()
   (lean4-test-with-indent-buffer
@@ -757,7 +888,7 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
        "  have hu_cont :\n")
     (lean4-test--goto-eob)
     (lean4-test--insert-lines-and-assert
-     '(("True" "      True")))))
+     '(("True" "    True")))))
 
 (ert-deftest lean4-indent--wrapped-declaration-colon-continues ()
   (lean4-test-with-indent-buffer
