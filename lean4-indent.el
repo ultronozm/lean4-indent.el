@@ -803,13 +803,13 @@ the line; otherwise indent from the delimiter column."
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
   "Find nearest prior nonblank line with indent < PREV-INDENT.
 Return (anchor-pos . anchor-indent), or nil if none."
-  (or (let ((context (lean4-indent--region-line-context prev-pos)))
-        (and context
-             (let ((anchor-pos (plist-get context :anchor-pos))
-                   (anchor-indent (plist-get context :anchor-indent)))
-               (and anchor-pos
-                    (< anchor-indent prev-indent)
-                    (cons anchor-pos anchor-indent)))))
+  (let ((context (lean4-indent--region-line-context prev-pos)))
+    (if context
+        (let ((anchor-pos (plist-get context :anchor-pos))
+              (anchor-indent (plist-get context :anchor-indent)))
+          (and anchor-pos
+               (< anchor-indent prev-indent)
+               (cons anchor-pos anchor-indent)))
       (save-excursion
         (goto-char prev-pos)
         (let ((found nil))
@@ -820,7 +820,7 @@ Return (anchor-pos . anchor-indent), or nil if none."
                 (let ((indent (lean4-indent--line-indent (point))))
                   (when (< indent prev-indent)
                     (setq found (cons (point) indent)))))))
-          found))))
+          found)))))
 
 (defun lean4-indent--anchor-parent-indent (anchor-pos anchor-indent step)
   "Compute the parent indentation from ANCHOR-POS/ANCHOR-INDENT.
@@ -894,7 +894,9 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
 ;;; Calc helpers
 (defun lean4-indent--in-calc-block-p (start-pos)
   "Return non-nil if START-POS is inside a calc block."
-  (or (plist-get (lean4-indent--region-line-context start-pos) :calc-indent)
+  (let ((context (lean4-indent--region-line-context start-pos)))
+    (if context
+        (plist-get context :calc-indent)
       (save-excursion
         (goto-char start-pos)
         (let ((found nil)
@@ -910,11 +912,13 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
                   (setq found t))
                 (when (< indent start-indent)
                   (setq start-indent indent)))))
-          found))))
+          found)))))
 
 (defun lean4-indent--find-calc-step-indent (start-pos)
   "Return indentation of nearest calc step line above START-POS, or nil."
-  (or (plist-get (lean4-indent--region-line-context start-pos) :calc-step-indent)
+  (let ((context (lean4-indent--region-line-context start-pos)))
+    (if context
+        (plist-get context :calc-step-indent)
       (save-excursion
         (goto-char start-pos)
         (let ((step-indent (current-indentation))
@@ -932,7 +936,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
                      (or (lean4-indent--line-starts-with-calc-step-p text)
                          (lean4-indent--line-ends-with-equals-p text)))
                 (setq found (lean4-indent--line-indent (point)))))))
-          found))))
+          found)))))
 
 (defun lean4-indent--calc-block-body-indent (start-pos base-indent step)
   "Return indent for a term body inside a surrounding calc block, or nil."
@@ -1200,7 +1204,9 @@ not inside such a declaration."
 
 (defun lean4-indent--find-mutual-indent (start-pos)
   "Return the indentation of the nearest enclosing `mutual`, or nil."
-  (or (plist-get (lean4-indent--region-line-context start-pos) :mutual-indent)
+  (let ((context (lean4-indent--region-line-context start-pos)))
+    (if context
+        (plist-get context :mutual-indent)
       (save-excursion
         (goto-char start-pos)
         (let ((found nil)
@@ -1217,7 +1223,7 @@ not inside such a declaration."
                   (if (> depth 0)
                       (setq depth (1- depth))
                     (setq found (lean4-indent--line-indent (point)))))))))
-          found))))
+          found)))))
 
 (defun lean4-indent--compute-indent ()
   "Compute indentation for current line."
