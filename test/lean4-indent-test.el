@@ -524,6 +524,32 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-mutual-from-mathlib ()
+  (let ((contents
+         (concat
+          "def normBareNumeral : Nat :=\n"
+          "  0\n\n"
+          "mutual\n\n"
+          "  partial def normPow : Nat :=\n"
+          "    0\n\n"
+          "  partial def normIntNumeral' : Nat :=\n"
+          "    0\n\n"
+          "end\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-match-from-mathlib ()
+  (let ((contents
+         (concat
+          "partial def typeToCharP (t : Nat) : Nat :=\n"
+          "match t with\n"
+          "| 0 =>\n"
+          "  0\n"
+          "| _ =>\n"
+          "  1\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-have-this-theorem-from-before-file ()
   (let ((contents
          (concat
@@ -2176,6 +2202,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should-not (lean4-indent--line-top-level-anchor-p "define foo := 1"))
   (should (lean4-indent--line-top-level-anchor-p "def foo := 1"))
   (should (lean4-indent--line-top-level-anchor-p "initialize_simps_projections Foo (bar → baz)"))
+  (should (lean4-indent--line-top-level-anchor-p "mutual"))
   (should (lean4-indent--line-top-level-anchor-p
            "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
 

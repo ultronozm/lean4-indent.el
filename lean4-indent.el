@@ -120,7 +120,7 @@ current line."
   '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
     "grind_pattern" "set_option" "open" "universe" "variable"
     "@[" "scoped["
-    "namespace" "section" "public section")
+    "namespace" "section" "public section" "mutual")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
 
 (defconst lean4-indent--top-level-anchors-re
@@ -1977,16 +1977,27 @@ lines that will remain unchanged anyway."
   (let* ((current (current-indentation))
          (current-text (lean4-indent--line-text (point)))
          (prev-pos (lean4-indent--prev-nonblank))
+         (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
+         (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
          (step lean4-indent-offset)
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
-         (body-indent (plist-get top-level-context :body-indent)))
+         (body-indent (plist-get top-level-context :body-indent))
+         (zero-indent-top-level-match-or-branch
+          (and (= current 0)
+               body-indent
+               (or (lean4-indent--starts-with-p current-text "\\_<match\\_>")
+                   (and (lean4-indent--branch-line-p current-text)
+                        (= prev-indent 0)
+                        (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
+                            (lean4-indent--branch-line-p prev-text)))))))
     (and lean4-indent--preserve-tactic-region-indentation
-         (> current 0)
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-top-level-anchor-p current-text))
-         body-indent
-         (>= current body-indent))))
+         (or (and (> current 0)
+                  body-indent
+                  (>= current body-indent))
+             zero-indent-top-level-match-or-branch))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
