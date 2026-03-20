@@ -151,7 +151,8 @@ current line."
 
 (defconst lean4-indent--re-blank "\\`[ \t]*\\'")
 (defconst lean4-indent--re-label-colon "^[ \t]*[A-Z][A-Z0-9_]*:[ \t]*$")
-(defconst lean4-indent--re-macro-rules "^[ \t]*\\(?:scoped[ \t]+\\)?macro_rules\\_>")
+(defconst lean4-indent--re-macro-rules
+  "^[ \t]*\\(?:\\(?:local\\|scoped\\)[ \t]+\\)?macro_rules\\_>")
 (defconst lean4-indent--re-starts-paren "\\(?:[(]\\|{\\|\\[\\)")
 (defconst lean4-indent--re-starts-branch "|\\(?:\\s-\\|$\\)")
 (defconst lean4-indent--re-starts-focus "·")

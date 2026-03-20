@@ -113,6 +113,7 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
 (ert-deftest lean4-indent--predicate-macro-rules ()
   (should (lean4-indent--macro-rules-line-p "macro_rules"))
   (should (lean4-indent--macro-rules-line-p "scoped macro_rules"))
+  (should (lean4-indent--macro-rules-line-p "local macro_rules"))
   (should-not (lean4-indent--macro-rules-line-p "macro_rule")))
 
 (ert-deftest lean4-indent--predicate-label-colon ()
@@ -577,6 +578,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
          (concat
           "run_cmd Lean.Elab.Command.liftTermElabM do\n"
           "  pure ()\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-local-macro-rules-from-mathlib ()
+  (let ((contents
+         (concat
+          "local macro_rules | `($t:term$n:superscript) => `(Fin $n → $t)\n"
+          "\n"
+          "theorem foo : True := by\n"
+          "  trivial\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2799,11 +2810,13 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (concat
        "  initialize addLinter commandRangesLinter\n"
        "  add_aesop_rules safe tactic\n"
+       "  local macro_rules | `(foo) => `(bar)\n"
        "  partial\n"
        "  elab (name := deprecated_modules)\n"
        "  public register_option linter.privateModule : Bool := {\n")
     (dolist (expected '("initialize addLinter commandRangesLinter"
                         "add_aesop_rules safe tactic"
+                        "local macro_rules | `(foo) => `(bar)"
                         "partial"
                         "elab (name := deprecated_modules)"
                         "public register_option linter.privateModule : Bool := {"))
