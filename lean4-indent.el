@@ -183,6 +183,7 @@ current line."
 (defconst lean4-indent--re-ends-then "\\_<then\\_>\\s-*\\'")
 (defconst lean4-indent--re-ends-else "\\_<else\\_>\\s-*\\'")
 (defconst lean4-indent--re-ends-fun-arrow "↦")
+(defconst lean4-indent--re-ends-left-arrow "←")
 (defconst lean4-indent--term-continuation-ops
   '("<;>" ";" "*")
   "Operators that continue the same term on the next line.")
@@ -440,6 +441,10 @@ current line."
 
 (defun lean4-indent--line-ends-with-fun-arrow-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-fun-arrow))
+
+(defun lean4-indent--line-ends-with-left-arrow-p (text)
+  "Return non-nil if TEXT ends with ←, allowing a trailing line comment."
+  (lean4-indent--ends-with-keyword-p text lean4-indent--re-ends-left-arrow))
 
 (defun lean4-indent--line-ends-with-term-continuation-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-term-continuation))
@@ -2430,6 +2435,78 @@ lines that will remain unchanged anyway."
               "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-*\\[[^]\n]+\\]\\s-+\\)?\\_<attribute\\_>"
               prev-text)))))
 
+(defun lean4-indent--newline-blank-line-indent ()
+  "Return a preferred indentation for a newly inserted blank line, or nil.
+
+This is used for blank-line indentation. It tries to choose the deepest
+plausible indentation in a few common completed-code situations, leaving `TAB'
+to cycle to shallower alternatives."
+  (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
+    (let* ((step lean4-indent-offset)
+           (prev-pos (lean4-indent--prev-nonblank))
+           (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
+           (prev-text-no-comment
+            (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
+                (lean4-indent--line-text-no-comment prev-pos)
+              ""))
+           (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+           (top-level-context (and prev-pos
+                                   (lean4-indent--top-level-context prev-pos step)))
+           (top-level-body-indent (plist-get top-level-context :body-indent))
+           (top-level-body-intro-kind (plist-get top-level-context :body-intro-kind))
+           (open-paren-pos (lean4-indent--open-paren-pos (point)))
+           (open-paren-col (and open-paren-pos
+                                (save-excursion
+                                  (goto-char open-paren-pos)
+                                  (current-column))))
+           (open-delimited-body-indent
+            (and open-paren-pos open-paren-col
+                 (lean4-indent--open-delimited-body-indent
+                  open-paren-pos open-paren-col step)))
+           (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
+           (open-paren-prefix-has-real-text
+            (and open-paren-pos-prev
+                 (save-excursion
+                   (goto-char open-paren-pos-prev)
+                   (string-match-p
+                    "[^ \t(\\[{⟨]"
+                    (buffer-substring-no-properties
+                     (line-beginning-position) open-paren-pos-prev))))))
+      (let* ((preferred
+              (cond
+               ((and prev-pos
+                     (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
+                (+ prev-indent step))
+               ((and prev-pos
+                     open-paren-pos-prev
+                     open-paren-prefix-has-real-text)
+                (+ prev-indent (* 2 step)))
+               (open-delimited-body-indent
+                open-delimited-body-indent)
+               ((and prev-pos
+                     (lean4-indent--line-starts-with-paren-p prev-text)
+                     (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
+                     (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+                     (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
+                (+ prev-indent step))
+               ((and prev-pos
+                     top-level-body-indent
+                     (eq top-level-body-intro-kind 'do)
+                     (> prev-indent top-level-body-indent)
+                     (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+                     (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+                     (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+                top-level-body-indent)
+               (t nil)))
+             (next-pos (lean4-indent--next-nonblank))
+             (next-indent (and next-pos
+                               (not (lean4-indent--comment-line-p next-pos))
+                               (not (lean4-indent--string-line-p next-pos))
+                               (lean4-indent--line-indent next-pos))))
+        (if next-indent
+            (max (or preferred 0) next-indent)
+          preferred)))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -2452,7 +2529,9 @@ lines that will remain unchanged anyway."
             (end-of-line)))
       )
      (t
-      (let* ((computed (lean4-indent--compute-indent))
+      (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
+             (computed (or newline-computed
+                           (lean4-indent--compute-indent)))
              (current (current-indentation))
              (tabp (eq this-command 'indent-for-tab-command))
              (target (cond

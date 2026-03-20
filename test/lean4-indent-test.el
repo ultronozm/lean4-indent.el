@@ -2991,7 +2991,55 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "    (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· * ·) h₁ h₂ <;> rw [← map_mul] <;> rfl) hx\n")
     (lean4-test--goto-line 3)
     (end-of-line)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-let-left-arrow-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : IO Unit := do\n"
+       "  let (x, newState) ←\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-paren-led-application-line-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : IO Unit := do\n"
+       "  let (x, newState) ←\n"
+       "    (withOptions (fun _ => info.options) x).toIO\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-nested-top-level-do-expression-stays-in-do-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : IO Unit := do\n"
+       "  modify fun state => { state with\n"
+       "    messages := state.messages ++ newState.messages,\n"
+       "    traceState.traces := state.traceState.traces ++ newState.traceState.traces }\n")
+    (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-inline-open-paren-arg-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : IO Unit := do\n"
+       "  (·.1) <$> info.runCoreMWithMessages (Lean.Meta.MetaM.run\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-record-argument-line-stays-at-sibling-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : IO Unit := do\n"
+       "  let (x, newState) ←\n"
+       "    (withOptions (fun _ => info.options) x).toIO\n"
+       "      { currNamespace := info.currNamespace, openDecls := info.openDecls\n"
+       "        fileName := ctx.fileName, fileMap := ctx.fileMap }\n"
+       "      { env, ngen := info.ngen }\n")
+    (lean4-test--goto-line 5)
+    (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
 
 (ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()
   (lean4-test-with-indent-buffer
