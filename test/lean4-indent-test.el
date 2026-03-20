@@ -821,6 +821,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-flush-left-wrapped-deriving-instance-header-from-mathlib ()
+  (let ((contents
+         (concat
+          "deriving instance\n"
+          "  T2Space, CommGroup,\n"
+          "for PontryaginDual A\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-brace-body-from-mathlib ()
   (let ((contents
          (concat
@@ -2713,6 +2722,16 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (forward-line 2)
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "deriving BEq"))))
+
+(ert-deftest lean4-indent--wrapped-top-level-deriving-instance-line-snaps-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "deriving instance\n"
+       "  T2Space, CommGroup,\n"
+       "  for PontryaginDual A\n")
+    (forward-line 2)
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "for PontryaginDual A"))))
 
 (ert-deftest lean4-indent--top-level-hash-commands-snap-left ()
   (lean4-test-with-indent-buffer

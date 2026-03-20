@@ -133,7 +133,7 @@ current line."
     "#check" "#eval" "#guard_msgs"
     "alias" "noncomputable" "nonrec"
     "@[" "scoped["
-    "namespace" "section" "public section" "mutual")
+    "namespace" "section" "public section" "mutual" "deriving")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
 
 (defconst lean4-indent--top-level-anchors-re
@@ -602,6 +602,9 @@ wrapped `variable' lines, or nil if TEXT is neither."
   (let ((case-fold-search nil))
     (or (string-match-p
          "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\(?:[:][^ \t\n]+\\)?\\(?:\\s-\\|$\\)"
+         text)
+        (string-match-p
+         "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
          text)
         (string-match-p
          "\\`[ \t]*\\_<\\(?:syntax\\|macro\\|elab\\)\\_>"
@@ -1606,6 +1609,8 @@ not inside such a declaration."
           (and prev-pos (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
+         (top-level-pos (plist-get top-level-context :pos))
+         (top-level-kind (plist-get top-level-context :kind))
          (top-level-body-intro-pos
           (plist-get top-level-context :body-intro-pos))
          (top-level-body-intro-kind
@@ -1684,13 +1689,23 @@ not inside such a declaration."
      ;; 3.25) `deriving` after an inductive/structure body aligns with the declaration head.
      ((and (lean4-indent--starts-with-p current-text "\\_<deriving\\_>")
            top-level-context)
-      (lean4-indent--line-indent (plist-get top-level-context :pos)))
+      (lean4-indent--line-indent top-level-pos))
+     ;; 3.3) Later lines in wrapped top-level command headers align with the header anchor.
+     ((and top-level-pos
+           (not top-level-kind)
+           (not top-level-body-intro-pos)
+           (string-match-p
+            "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
+            (lean4-indent--line-text top-level-pos))
+           prev-pos
+           (> prev-indent 0))
+      (lean4-indent--line-indent top-level-pos))
      ;; 3.3) Zero-indent closing delimiters in top-level declaration bodies stay at declaration column.
      ((and top-level-context
            (memq top-level-body-intro-kind '(coloneq coloneq-by))
            (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
             top-level-context))
-      (lean4-indent--line-indent (plist-get top-level-context :pos)))
+      (lean4-indent--line-indent top-level-pos))
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
@@ -2241,14 +2256,26 @@ lines that will remain unchanged anyway."
          (body-intro-pos (plist-get top-level-context :body-intro-pos))
          (body-intro-kind (plist-get top-level-context :body-intro-kind))
          (top-level-declaration-header-continuation
-          (and (> current 0)
+          (and (>= current 0)
                (eq top-level-kind 'declaration)
-               (not body-intro-pos)))
+               (not body-intro-pos)
+               (or (> current 0)
+                   (and prev-pos (> prev-indent 0)))))
          (top-level-wrapped-anchor-continuation
-          (and prev-pos
-               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
-               (lean4-indent--line-top-level-wrappable-anchor-p prev-text)
-               (<= current (+ prev-indent step))))
+          (or
+           (and prev-pos
+                (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+                (lean4-indent--line-top-level-wrappable-anchor-p prev-text)
+                (<= current (+ prev-indent step)))
+           (and top-level-context
+                (not top-level-kind)
+                (not body-intro-pos)
+                (string-match-p
+                 "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
+                 (lean4-indent--line-text (plist-get top-level-context :pos)))
+                (or (> current 0)
+                    (and prev-pos (> prev-indent 0)))
+                (<= current (+ prev-indent step)))))
          (top-level-variable-continuation
           (and (eq top-level-kind 'variable)
                body-indent
