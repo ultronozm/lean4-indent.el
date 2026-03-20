@@ -789,6 +789,24 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-unseal-in-from-mathlib ()
+  (let ((contents
+         (concat
+          "unseal OreLocalization.one in\n"
+          "@[to_additive]\n"
+          "theorem mk_one : mk 1 (1 : S) = 1 := OreLocalization.one_def\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-inline-macro-rules-from-mathlib ()
+  (let ((contents
+         (concat
+          "@[inherit_doc OreLocalization]\n"
+          "scoped syntax:1075 term noWs atomic(\"[\" term \"⁻¹\" noWs \"]\") : term\n"
+          "macro_rules | `($R[$S⁻¹]) => ``(OreLocalization $S $R)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-private-modifier-line-from-mathlib ()
   (let ((contents
          (concat
@@ -2356,6 +2374,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  include hf hg\n"
        "  include S f in\n"
        "  omit [Foo α] [Bar β] in\n"
+       "  unseal Foo.bar in\n"
+       "  macro_rules | `(foo) => `(bar)\n"
        "  private\n"
        "  alias ⟨foo, _⟩ := bar\n"
        "  noncomputable\n")
@@ -2367,6 +2387,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "include hf hg"
                         "include S f in"
                         "omit [Foo α] [Bar β] in"
+                        "unseal Foo.bar in"
+                        "macro_rules | `(foo) => `(bar)"
                         "private"
                         "alias ⟨foo, _⟩ := bar"
                         "noncomputable"))
@@ -2598,6 +2620,8 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "include hf hg"))
   (should (lean4-indent--line-top-level-anchor-p "include S f in"))
   (should (lean4-indent--line-top-level-anchor-p "omit [Foo α] [Bar β] in"))
+  (should (lean4-indent--line-top-level-anchor-p "unseal Foo.bar in"))
+  (should (lean4-indent--line-top-level-anchor-p "macro_rules | `(foo) => `(bar)"))
   (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))

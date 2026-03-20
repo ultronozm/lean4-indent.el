@@ -119,7 +119,7 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
     "grind_pattern" "irreducible_def" "proof_wanted" "set_option" "open" "universe" "variable"
-    "export" "include" "omit" "partial"
+    "export" "include" "omit" "unseal" "partial"
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
     "#check" "#eval" "#guard_msgs"
@@ -551,6 +551,7 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-anchor-p (text)
   (let ((case-fold-search nil))
     (or (lean4-indent--line-top-level-declaration-head-p text)
+        (lean4-indent--macro-rules-line-p text)
         (string-match-p
          "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
          text)
