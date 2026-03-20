@@ -2346,6 +2346,12 @@ lines that will remain unchanged anyway."
                (or (not body-intro-pos)
                    (lean4-indent--branch-line-p
                     (lean4-indent--line-text body-intro-pos)))))
+         (zero-indent-top-level-macro-rules-branch
+          (and (= current 0)
+               prev-pos
+               (lean4-indent--branch-line-p current-text)
+               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+               (lean4-indent--macro-rules-line-p prev-text)))
          (zero-indent-top-level-brace-body
           (and (= current 0)
                body-indent
@@ -2379,6 +2385,7 @@ lines that will remain unchanged anyway."
                   (>= current body-indent))
              zero-indent-top-level-match-or-branch
              zero-indent-top-level-equation-branch
+             zero-indent-top-level-macro-rules-branch
              zero-indent-top-level-brace-body
              zero-indent-top-level-closing-delimiter
              zero-indent-top-level-where-line))))

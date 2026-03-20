@@ -600,6 +600,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-macro-rules-branches-from-mathlib ()
+  (let ((contents
+         (concat
+          "macro_rules\n"
+          "| `($a ⊔ $b) => `(Max.max $a $b)\n"
+          "| `($a ⊓ $b) => `(Min.min $a $b)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-prefix-arg-from-mathlib ()
   (let ((contents
          (concat
