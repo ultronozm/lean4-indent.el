@@ -2263,156 +2263,156 @@ declaration bodies, avoiding a full `lean4-indent--compute-indent' call for
 lines that will remain unchanged anyway."
   (let* ((current (current-indentation))
          (current-text (lean4-indent--line-text (point)))
-         (prev-pos (lean4-indent--prev-nonblank))
-         (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
-         (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
          (step lean4-indent-offset)
+         (prev-pos (lean4-indent--prev-nonblank))
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
-         (anchor (and prev-pos
-                      (lean4-indent--find-anchor prev-pos prev-indent)))
-         (anchor-pos (car-safe anchor))
-         (anchor-indent (if anchor (cdr anchor) 0))
-         (anchor-body-intro-kind
-          (and anchor-pos
-               (lean4-indent--line-body-intro-kind
-                (lean4-indent--line-text-no-comment anchor-pos))))
          (top-level-kind (plist-get top-level-context :kind))
          (body-indent (plist-get top-level-context :body-indent))
          (body-intro-pos (plist-get top-level-context :body-intro-pos))
-         (body-intro-kind (plist-get top-level-context :body-intro-kind))
-         (top-level-declaration-header-continuation
-          (and (>= current 0)
-               (eq top-level-kind 'declaration)
-               (not body-intro-pos)
-               (or (> current 0)
-                   (and prev-pos (> prev-indent 0)))))
-         (top-level-wrapped-anchor-continuation
-          (or
-           (and prev-pos
-                (lean4-indent--line-structural-top-level-anchor-p prev-pos)
-                (lean4-indent--line-top-level-wrappable-anchor-p prev-text)
-                (<= current (+ prev-indent step)))
-           (and top-level-context
-                (not top-level-kind)
-                (not body-intro-pos)
-                (string-match-p
-                 "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
-                 (lean4-indent--line-text (plist-get top-level-context :pos)))
-                (or (> current 0)
-                    (and prev-pos (> prev-indent 0)))
-                (<= current (+ prev-indent step)))))
-         (top-level-variable-continuation
-          (and (eq top-level-kind 'variable)
-               body-indent
-               (<= current body-indent)))
-         (top-level-anchor-continuation
-          (and prev-pos
-               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
-               (memq (lean4-indent--line-body-intro-kind prev-text)
-                     '(coloneq coloneq-by by where))
-               (<= current (+ prev-indent step))))
-         (shallow-first-top-level-body-line
-          (and (> current 0)
-               body-indent
-               body-intro-pos
-               (= prev-pos body-intro-pos)
-               (memq body-intro-kind '(coloneq coloneq-by by where))
-               (<= current body-indent)))
-         (zero-indent-first-top-level-body-line
-          (and (= current 0)
-               body-indent
-               body-intro-pos
-               (= prev-pos body-intro-pos)
-               (memq body-intro-kind '(coloneq coloneq-by by where))))
-         (zero-indent-top-level-tactic-body-line
-          (and (= current 0)
-               body-indent
-               (memq body-intro-kind '(by coloneq-by))
-               prev-pos
-               (> prev-indent 0)))
-         (zero-indent-top-level-focus-line
-          (and (= current 0)
-               body-indent
-               (memq body-intro-kind '(by coloneq-by termination decreasing))
-               (lean4-indent--focus-dot-line-p current-text)
-               prev-pos
-               (or (and body-intro-pos (= prev-pos body-intro-pos))
-                   (lean4-indent--focus-dot-line-p prev-text))))
-         (zero-indent-top-level-attribute-continuation
-          (and (= current 0)
-               (lean4-indent--inside-open-top-level-attribute-block-p)))
-         (zero-indent-top-level-match-or-branch
-          (and (= current 0)
-               body-indent
-               (or (lean4-indent--starts-with-p current-text "\\_<match\\_>")
-                   (and (lean4-indent--branch-line-p current-text)
-                        (or (and prev-pos body-intro-pos
-                                 (= prev-pos body-intro-pos))
-                            (and (= prev-indent 0)
-                                 (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
-                                     (lean4-indent--branch-line-p prev-text))))))))
-         (zero-indent-top-level-equation-branch
-          (and (= current 0)
-               (eq top-level-kind 'declaration)
-               (lean4-indent--branch-line-p current-text)
-               (or (not body-intro-pos)
-                   (eq body-intro-kind 'colon)
-                   (lean4-indent--branch-line-p
-                    (lean4-indent--line-text body-intro-pos)))))
-         (zero-indent-top-level-macro-rules-branch
-          (and (= current 0)
-               prev-pos
-               (lean4-indent--branch-line-p current-text)
-               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
-               (lean4-indent--macro-rules-line-p prev-text)))
-         (zero-indent-top-level-brace-body
-          (and (= current 0)
-               body-indent
-               (memq body-intro-kind '(coloneq coloneq-by))
-               (string-match-p "\\`[ \t]*[{}]" current-text)))
-         (zero-indent-top-level-closing-delimiter
-          (and (= current 0)
-               body-indent
-               (memq body-intro-kind '(coloneq coloneq-by open-brace))
-               (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
-                top-level-context)))
-         (zero-indent-top-level-where-line
-          (and (= current 0)
-               body-indent
-               (memq body-intro-kind '(coloneq coloneq-by by do))
-               (lean4-indent--starts-with-p current-text "\\_<where\\_>")))
-         (zero-indent-where-field-body-line
-          (and (= current 0)
-               prev-pos
-               anchor-pos
-               (> prev-indent anchor-indent)
-               (eq anchor-body-intro-kind 'where)
-               (memq (lean4-indent--line-body-intro-kind
-                      (lean4-indent--line-text-no-comment prev-pos))
-                     '(coloneq coloneq-by by do)))))
+         (body-intro-kind (plist-get top-level-context :body-intro-kind)))
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
-         (or top-level-declaration-header-continuation
-             top-level-wrapped-anchor-continuation
-             top-level-anchor-continuation
-             top-level-variable-continuation
-             shallow-first-top-level-body-line
-             zero-indent-first-top-level-body-line
-             zero-indent-top-level-tactic-body-line
-             zero-indent-top-level-focus-line
-             zero-indent-top-level-attribute-continuation
-             (and (> current 0)
+         (or (and (> current 0)
                   body-indent
                   (>= current body-indent))
-             zero-indent-top-level-match-or-branch
-             zero-indent-top-level-equation-branch
-             zero-indent-top-level-macro-rules-branch
-             zero-indent-top-level-brace-body
-             zero-indent-top-level-closing-delimiter
-             zero-indent-top-level-where-line
-             zero-indent-where-field-body-line))))
+             (let* ((prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
+                    (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+                    (anchor (and prev-pos
+                                 (lean4-indent--find-anchor prev-pos prev-indent)))
+                    (anchor-pos (car-safe anchor))
+                    (anchor-indent (if anchor (cdr anchor) 0))
+                    (anchor-body-intro-kind
+                     (and anchor-pos
+                          (lean4-indent--line-body-intro-kind
+                           (lean4-indent--line-text-no-comment anchor-pos))))
+                    (top-level-declaration-header-continuation
+                     (and (>= current 0)
+                          (eq top-level-kind 'declaration)
+                          (not body-intro-pos)
+                          (or (> current 0)
+                              (and prev-pos (> prev-indent 0)))))
+                    (top-level-wrapped-anchor-continuation
+                     (or
+                      (and prev-pos
+                           (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+                           (lean4-indent--line-top-level-wrappable-anchor-p prev-text)
+                           (<= current (+ prev-indent step)))
+                      (and top-level-context
+                           (not top-level-kind)
+                           (not body-intro-pos)
+                           (string-match-p
+                            "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
+                            (lean4-indent--line-text (plist-get top-level-context :pos)))
+                           (or (> current 0)
+                               (and prev-pos (> prev-indent 0)))
+                           (<= current (+ prev-indent step)))))
+                    (top-level-variable-continuation
+                     (and (eq top-level-kind 'variable)
+                          body-indent
+                          (<= current body-indent)))
+                    (top-level-anchor-continuation
+                     (and prev-pos
+                          (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+                          (memq (lean4-indent--line-body-intro-kind prev-text)
+                                '(coloneq coloneq-by by where))
+                          (<= current (+ prev-indent step))))
+                    (shallow-first-top-level-body-line
+                     (and (> current 0)
+                          body-indent
+                          body-intro-pos
+                          (= prev-pos body-intro-pos)
+                          (memq body-intro-kind '(coloneq coloneq-by by where))
+                          (<= current body-indent)))
+                    (zero-indent-first-top-level-body-line
+                     (and (= current 0)
+                          body-indent
+                          body-intro-pos
+                          (= prev-pos body-intro-pos)
+                          (memq body-intro-kind '(coloneq coloneq-by by where))))
+                    (zero-indent-top-level-tactic-body-line
+                     (and (= current 0)
+                          body-indent
+                          (memq body-intro-kind '(by coloneq-by))
+                          prev-pos
+                          (> prev-indent 0)))
+                    (zero-indent-top-level-focus-line
+                     (and (= current 0)
+                          body-indent
+                          (memq body-intro-kind '(by coloneq-by termination decreasing))
+                          (lean4-indent--focus-dot-line-p current-text)
+                          prev-pos
+                          (or (and body-intro-pos (= prev-pos body-intro-pos))
+                              (lean4-indent--focus-dot-line-p prev-text))))
+                    (zero-indent-top-level-attribute-continuation
+                     (and (= current 0)
+                          (lean4-indent--inside-open-top-level-attribute-block-p)))
+                    (zero-indent-top-level-match-or-branch
+                     (and (= current 0)
+                          body-indent
+                          (or (lean4-indent--starts-with-p current-text "\\_<match\\_>")
+                              (and (lean4-indent--branch-line-p current-text)
+                                   (or (and prev-pos body-intro-pos
+                                            (= prev-pos body-intro-pos))
+                                       (and (= prev-indent 0)
+                                            (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
+                                                (lean4-indent--branch-line-p prev-text))))))))
+                    (zero-indent-top-level-equation-branch
+                     (and (= current 0)
+                          (eq top-level-kind 'declaration)
+                          (lean4-indent--branch-line-p current-text)
+                          (or (not body-intro-pos)
+                              (eq body-intro-kind 'colon)
+                              (lean4-indent--branch-line-p
+                               (lean4-indent--line-text body-intro-pos)))))
+                    (zero-indent-top-level-macro-rules-branch
+                     (and (= current 0)
+                          prev-pos
+                          (lean4-indent--branch-line-p current-text)
+                          (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+                          (lean4-indent--macro-rules-line-p prev-text)))
+                    (zero-indent-top-level-brace-body
+                     (and (= current 0)
+                          body-indent
+                          (memq body-intro-kind '(coloneq coloneq-by))
+                          (string-match-p "\\`[ \t]*[{}]" current-text)))
+                    (zero-indent-top-level-closing-delimiter
+                     (and (= current 0)
+                          body-indent
+                          (memq body-intro-kind '(coloneq coloneq-by open-brace))
+                          (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
+                           top-level-context)))
+                    (zero-indent-top-level-where-line
+                     (and (= current 0)
+                          body-indent
+                          (memq body-intro-kind '(coloneq coloneq-by by do))
+                          (lean4-indent--starts-with-p current-text "\\_<where\\_>")))
+                    (zero-indent-where-field-body-line
+                     (and (= current 0)
+                          prev-pos
+                          anchor-pos
+                          (> prev-indent anchor-indent)
+                          (eq anchor-body-intro-kind 'where)
+                          (memq (lean4-indent--line-body-intro-kind
+                                 (lean4-indent--line-text-no-comment prev-pos))
+                                '(coloneq coloneq-by by do)))))
+               (or top-level-declaration-header-continuation
+                   top-level-wrapped-anchor-continuation
+                   top-level-anchor-continuation
+                   top-level-variable-continuation
+                   shallow-first-top-level-body-line
+                   zero-indent-first-top-level-body-line
+                   zero-indent-top-level-tactic-body-line
+                   zero-indent-top-level-focus-line
+                   zero-indent-top-level-attribute-continuation
+                   zero-indent-top-level-match-or-branch
+                   zero-indent-top-level-equation-branch
+                   zero-indent-top-level-macro-rules-branch
+                   zero-indent-top-level-brace-body
+                   zero-indent-top-level-closing-delimiter
+                   zero-indent-top-level-where-line
+                   zero-indent-where-field-body-line))))))
 
 (defun lean4-indent--stable-region-shallow-top-level-anchor-line-p ()
   "Return non-nil when `indent-region' should preserve a shallow top-level anchor line."
