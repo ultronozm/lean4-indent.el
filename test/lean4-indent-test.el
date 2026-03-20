@@ -643,6 +643,17 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-wrapped-top-level-equation-branches-from-mathlib ()
+  (let ((contents
+         (concat
+          "theorem list_findIdx₁ {p : α → β → Bool} (hp : Primrec₂ p) :\n"
+          "    ∀ l : List β, Primrec fun a => l.findIdx (p a)\n"
+          "| [] => const 0\n"
+          "| a :: l => (cond (hp.comp .id (const a)) (const 0) (succ.comp (list_findIdx₁ hp l))).of_eq fun n =>\n"
+          "  by simp [List.findIdx_cons]\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-macro-rules-branches-from-mathlib ()
   (let ((contents
          (concat

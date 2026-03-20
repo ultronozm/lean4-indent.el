@@ -2357,6 +2357,7 @@ lines that will remain unchanged anyway."
                (eq top-level-kind 'declaration)
                (lean4-indent--branch-line-p current-text)
                (or (not body-intro-pos)
+                   (eq body-intro-kind 'colon)
                    (lean4-indent--branch-line-p
                     (lean4-indent--line-text body-intro-pos)))))
          (zero-indent-top-level-macro-rules-branch
