@@ -122,9 +122,11 @@ current line."
     "extend_docs"
     "run_cmd"
     "library_note2"
-    "export" "include" "omit" "unseal" "suppress_compilation" "partial"
+    "export" "include" "omit" "unseal" "suppress_compilation" "unsuppress_compilation" "partial"
     "insert_to_additive_translation"
     "mk_iff_of_inductive_prop"
+    "assert_not_exists"
+    "elab_rules"
     "unif_hint"
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
@@ -1287,7 +1289,14 @@ not inside such a declaration."
                     current-body-intro-pos nil
                     current-body-intro-kind nil
                     current-body-intro-final-p nil
-                    current-body-indent (+ (lean4-indent--line-indent pos) step)))
+                    current-body-indent (+ (lean4-indent--line-indent pos) step))
+              (when (not current-top-kind)
+                (let ((kind (lean4-indent--line-body-intro-kind text)))
+                  (when kind
+                    (setq current-body-intro-pos (copy-marker pos)
+                          current-body-intro-kind kind
+                          current-body-intro-final-p
+                          (memq kind '(coloneq-by coloneq by where do termination decreasing)))))))
             (when (and current-top-pos (eq current-top-kind 'declaration)
                        (not current-body-intro-final-p))
               (let ((kind (lean4-indent--declaration-header-body-intro-kind pos)))
@@ -2269,6 +2278,14 @@ lines that will remain unchanged anyway."
                (memq body-intro-kind '(by coloneq-by))
                prev-pos
                (> prev-indent 0)))
+         (zero-indent-top-level-focus-line
+          (and (= current 0)
+               body-indent
+               (memq body-intro-kind '(by coloneq-by termination decreasing))
+               (lean4-indent--focus-dot-line-p current-text)
+               prev-pos
+               (or (and body-intro-pos (= prev-pos body-intro-pos))
+                   (lean4-indent--focus-dot-line-p prev-text))))
          (zero-indent-top-level-attribute-continuation
           (and (= current 0)
                (lean4-indent--inside-open-top-level-attribute-block-p)))
@@ -2308,6 +2325,7 @@ lines that will remain unchanged anyway."
              shallow-first-top-level-body-line
              zero-indent-first-top-level-body-line
              zero-indent-top-level-tactic-body-line
+             zero-indent-top-level-focus-line
              zero-indent-top-level-attribute-continuation
              (and (> current 0)
                   body-indent
@@ -2316,6 +2334,22 @@ lines that will remain unchanged anyway."
              zero-indent-top-level-brace-body
              zero-indent-top-level-closing-delimiter
              zero-indent-top-level-where-line))))
+
+(defun lean4-indent--stable-region-shallow-top-level-anchor-line-p ()
+  "Return non-nil when `indent-region' should preserve a shallow top-level anchor line."
+  (let* ((current (current-indentation))
+         (current-text (lean4-indent--line-text (point)))
+         (prev-pos (lean4-indent--prev-nonblank))
+         (prev-text (if prev-pos (lean4-indent--line-text prev-pos) "")))
+    (and (> current 0)
+         (<= current lean4-indent-offset)
+         (lean4-indent--line-top-level-anchor-p current-text)
+         (lean4-indent--line-top-level-declaration-head-p current-text)
+         prev-pos
+         (or (lean4-indent--starts-with-p prev-text "@\\[")
+             (string-match-p
+              "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-*\\[[^]\n]+\\]\\s-+\\)?\\_<attribute\\_>"
+              prev-text)))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
@@ -2383,6 +2417,7 @@ repeated whole-declaration rescans near the end of large files."
                     (and (= (current-indentation) 0)
                          (lean4-indent--line-structural-top-level-anchor-p
                           (point)))
+                    (lean4-indent--stable-region-shallow-top-level-anchor-line-p)
                     (lean4-indent--stable-region-body-line-p))
           (funcall indent-line-function))
         (forward-line 1)))))

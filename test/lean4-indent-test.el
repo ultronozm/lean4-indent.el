@@ -609,6 +609,45 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-assert-not-exists-from-mathlib ()
+  (let ((contents
+         (concat
+          "-- comment\n"
+          "assert_not_exists IsLocalization IsLocalRing\n"
+          "\n"
+          "theorem foo : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-elab-rules-from-mathlib ()
+  (let ((contents
+         (concat
+          "elab_rules : tactic | `(tactic| ghost_calc $[$ids']*) => do\n"
+          "  pure ()\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-shallow-top-level-decl-after-attribute-from-mathlib ()
+  (let ((contents
+         (concat
+          "@[simp]\n"
+          " theorem equivNum_apply : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-focus-lines-in-decreasing-by-from-mathlib ()
+  (let ((contents
+         (concat
+          "termination_by WellFounded.wrap foo\n"
+          "decreasing_by\n"
+          "· exact deg_reduce\n"
+          "· apply degree_sub_LTerm_lt\n"
+          "  intro hf0\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-irreducible-def-from-mathlib ()
   (let ((contents
          (concat
@@ -2584,6 +2623,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  omit [Foo α] [Bar β] in\n"
        "  unseal Foo.bar in\n"
        "  suppress_compilation in\n"
+       "  unsuppress_compilation in\n"
        "  macro_rules | `(foo) => `(bar)\n"
        "  nonrec\n"
        "  unif_hint foo (R R' : C) where\n"
@@ -2592,7 +2632,9 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  noncomputable\n"
        "  extend_docs Foo.bar after\n"
        "  run_cmd Foo.bar do\n"
-       "  mk_iff_of_inductive_prop Foo.bar Foo.baz\n")
+       "  mk_iff_of_inductive_prop Foo.bar Foo.baz\n"
+       "  assert_not_exists Foo Bar\n"
+       "  elab_rules : tactic | `(tactic| foo) => do\n")
     (dolist (expected '("initialize_simps_projections Foo (bar → baz)"
                         "grind_pattern Foo.bar => True"
                         "local grind_pattern Foo.bar => True"
@@ -2605,6 +2647,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "omit [Foo α] [Bar β] in"
                         "unseal Foo.bar in"
                         "suppress_compilation in"
+                        "unsuppress_compilation in"
                         "macro_rules | `(foo) => `(bar)"
                         "nonrec"
                         "unif_hint foo (R R' : C) where"
@@ -2613,7 +2656,9 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "noncomputable"
                         "extend_docs Foo.bar after"
                         "run_cmd Foo.bar do"
-                        "mk_iff_of_inductive_prop Foo.bar Foo.baz"))
+                        "mk_iff_of_inductive_prop Foo.bar Foo.baz"
+                        "assert_not_exists Foo Bar"
+                        "elab_rules : tactic | `(tactic| foo) => do"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
@@ -2869,6 +2914,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "omit [Foo α] [Bar β] in"))
   (should (lean4-indent--line-top-level-anchor-p "unseal Foo.bar in"))
   (should (lean4-indent--line-top-level-anchor-p "suppress_compilation in"))
+  (should (lean4-indent--line-top-level-anchor-p "unsuppress_compilation in"))
   (should (lean4-indent--line-top-level-anchor-p "macro_rules | `(foo) => `(bar)"))
   (should (lean4-indent--line-top-level-anchor-p "nonrec"))
   (should (lean4-indent--line-top-level-anchor-p "insert_to_additive_translation Foo Bar"))
@@ -2877,6 +2923,8 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "extend_docs Foo.bar after"))
   (should (lean4-indent--line-top-level-anchor-p "run_cmd Foo.bar do"))
   (should (lean4-indent--line-top-level-anchor-p "mk_iff_of_inductive_prop Foo.bar Foo.baz"))
+  (should (lean4-indent--line-top-level-anchor-p "assert_not_exists Foo Bar"))
+  (should (lean4-indent--line-top-level-anchor-p "elab_rules : tactic | `(tactic| foo) => do"))
   (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p "local grind_pattern foo => True"))
