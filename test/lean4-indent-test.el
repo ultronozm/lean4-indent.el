@@ -419,6 +419,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
         (indent-region (point-min) (point-max))
         (should (equal (buffer-string) before))))))
 
+(lean4-define-final-line-indent-test
+  lean4-indent--multiline-string-continuation-keeps-indent
+  "def foo :=\n  s!\"hello \\\n    -- world\"\n")
+
+(ert-deftest lean4-indent--indent-region-preserves-multiline-string-continuation ()
+  (lean4-test-with-indent-buffer
+      "def foo :=\n  s!\"hello \\\n    -- world\"\n"
+    (lean4-test--indent-region-and-assert-same)))
+
 (ert-deftest lean4-indent--indent-region-preserves-wrapped-instance-where-body-from-before-file ()
   (let ((contents
          (concat

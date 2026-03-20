@@ -211,18 +211,33 @@ current line."
 
 (defun lean4-indent--line-text-no-comment (pos)
   "Return line text at POS with any trailing line comment stripped."
-  (save-excursion
-    (goto-char pos)
-    (let* ((bol (line-beginning-position))
-           (eol (line-end-position))
-           (cut eol))
-      (goto-char bol)
-      (while (re-search-forward "--" eol t)
-        (let ((ppss (syntax-ppss (match-beginning 0))))
-          (unless (or (nth 3 ppss) (nth 4 ppss))
-            (setq cut (match-beginning 0))
-            (goto-char eol))))
-      (buffer-substring-no-properties bol cut))))
+  (let ((context (lean4-indent--region-line-context pos)))
+    (if (and context (plist-member context :text-no-comment))
+        (plist-get context :text-no-comment)
+      (save-excursion
+        (goto-char pos)
+        (let* ((bol (line-beginning-position))
+               (eol (line-end-position))
+               (text (buffer-substring-no-properties bol eol))
+               (prev-continued-string-line
+                (and (not (bobp))
+                     (save-excursion
+                       (forward-line -1)
+                       (string-match-p "\\\\\\s-*$"
+                                       (buffer-substring-no-properties
+                                        (line-beginning-position)
+                                        (line-end-position))))
+                     (string-match-p "\"" text)))
+               (cut eol))
+          (if prev-continued-string-line
+              text
+            (goto-char bol)
+            (while (re-search-forward "--" eol t)
+              (let ((ppss (syntax-ppss (match-beginning 0))))
+                (unless (or (nth 3 ppss) (nth 4 ppss))
+                  (setq cut (match-beginning 0))
+                  (goto-char eol))))
+            (buffer-substring-no-properties bol cut)))))))
 
 (defun lean4-indent--line-blank-p (text)
   "Return non-nil if TEXT is blank."
@@ -413,15 +428,29 @@ current line."
 
 (defun lean4-indent--comment-line-p (&optional pos)
   "Return t if POS is on a comment line (line or block)."
-  (save-excursion
-    (goto-char (or pos (point)))
-    (let* ((bol (line-beginning-position))
-           (ppss (syntax-ppss bol))
-           (text (lean4-indent--line-text bol))
-           (trim (string-trim-left text)))
-      (or (nth 4 ppss)
-          (string-prefix-p "--" trim)
-          (string-prefix-p "/-" trim)))))
+  (let* ((pos (or pos (point)))
+         (context (lean4-indent--region-line-context pos)))
+    (if (and context (plist-member context :comment-line))
+        (plist-get context :comment-line)
+      (save-excursion
+        (goto-char pos)
+        (let* ((bol (line-beginning-position))
+               (ppss (syntax-ppss bol))
+               (text (lean4-indent--line-text bol))
+               (trim (string-trim-left text)))
+          (or (nth 4 ppss)
+              (string-prefix-p "--" trim)
+              (string-prefix-p "/-" trim)))))))
+
+(defun lean4-indent--string-line-p (&optional pos)
+  "Return t if POS is on a line that begins inside a string literal."
+  (let* ((pos (or pos (point)))
+         (context (lean4-indent--region-line-context pos)))
+    (if (and context (plist-member context :string-line))
+        (plist-get context :string-line)
+      (save-excursion
+        (goto-char pos)
+        (nth 3 (syntax-ppss (line-beginning-position)))))))
 
 (defun lean4-indent--prev-have-suffices-p (pos limit-indent)
   "Return t if a prior line contains have/suffices before POS with indent < LIMIT-INDENT."
@@ -521,13 +550,24 @@ wrapped `variable' lines, or nil if TEXT is neither."
 (defun lean4-indent--line-structural-top-level-anchor-p (&optional pos)
   "Return non-nil if line at POS is a real top-level anchor."
   (let ((pos (or pos (point))))
-    (and (lean4-indent--line-top-level-anchor-p (lean4-indent--line-text pos))
-         (save-excursion
-           (goto-char pos)
-           (let ((ppss (syntax-ppss (line-beginning-position))))
-             (and (= (car ppss) 0)
-                  (not (nth 3 ppss))
-                  (not (nth 4 ppss))))))))
+    (let ((context (lean4-indent--region-line-context pos)))
+      (if (and context (plist-member context :structural-top-level-anchor))
+          (plist-get context :structural-top-level-anchor)
+        (and (lean4-indent--line-top-level-anchor-p (lean4-indent--line-text pos))
+             (save-excursion
+               (goto-char pos)
+               (let ((ppss (syntax-ppss (line-beginning-position))))
+                 (and (= (car ppss) 0)
+                      (not (nth 3 ppss))
+                      (not (nth 4 ppss))))))))))
+
+(defun lean4-indent--comment-line-cached-p (&optional pos)
+  "Return t if POS is on a comment line, using region cache when available."
+  (let* ((pos (or pos (point)))
+         (context (lean4-indent--region-line-context pos)))
+    (if (and context (plist-member context :comment-line))
+        (plist-get context :comment-line)
+      (lean4-indent--comment-line-p pos))))
 
 (defun lean4-indent--declaration-inline-body-intro-kind (pos)
   "Return declaration body-intro kind for line at POS, or nil.
@@ -1164,8 +1204,20 @@ not inside such a declaration."
         (let* ((pos (point))
                (text (lean4-indent--line-text pos))
                (nonblank (not (lean4-indent--line-blank-p text)))
+               (trim (string-trim-left text))
+               (ppss (syntax-ppss pos))
+               (string-line (nth 3 ppss))
+               (comment-line (or (nth 4 ppss)
+                                 (string-prefix-p "--" trim)
+                                 (string-prefix-p "/-" trim)))
+               (text-no-comment (lean4-indent--line-text-no-comment pos))
+               (structural-top-level-anchor
+                (and (lean4-indent--line-top-level-anchor-p text-no-comment)
+                     (= (car ppss) 0)
+                     (not (nth 3 ppss))
+                     (not (nth 4 ppss))))
                (significant (and nonblank
-                                 (not (lean4-indent--comment-line-p pos))))
+                                 (not comment-line)))
                (indent (and nonblank (lean4-indent--line-indent pos))))
           (when nonblank
             (while (and indent-stack
@@ -1183,6 +1235,10 @@ not inside such a declaration."
                           (when (eq (car entry) 'mutual)
                             (throw 'mutual (cdr entry))))
                         nil)
+                      :string-line string-line
+                      :comment-line comment-line
+                      :text-no-comment text-no-comment
+                      :structural-top-level-anchor structural-top-level-anchor
                       :anchor-pos (caar indent-stack)
                       :anchor-indent (cdar indent-stack)
                       :calc-indent (plist-get (car calc-stack) :indent)
@@ -1337,6 +1393,7 @@ not inside such a declaration."
          (parent-indent (lean4-indent--anchor-parent-indent anchor-pos anchor-indent step))
          (prev-comment-p (and prev-pos (lean4-indent--comment-line-p prev-pos)))
          (current-comment-p (lean4-indent--comment-line-p (line-beginning-position)))
+         (current-string-p (lean4-indent--string-line-p (line-beginning-position)))
          (open-paren-pos (lean4-indent--open-paren-pos (point)))
          (open-paren-col (and open-paren-pos (save-excursion
                                                (goto-char open-paren-pos)
@@ -1440,8 +1497,8 @@ not inside such a declaration."
       (if prev-pos
           (lean4-indent--find-end-anchor-indent (point))
         0))
-     ;; 1) Keep comment indentation as written.
-     (current-comment-p
+     ;; 1) Keep comment/string indentation as written.
+     ((or current-comment-p current-string-p)
       (current-indentation))
      ;; 1.5) Lines starting with := continue previous field alignment.
      ((lean4-indent--starts-with-p current-text ":=")
@@ -1940,8 +1997,8 @@ not inside such a declaration."
       anchor-indent)
      ;; 12) Fallback
      (t
-      (let ((fallback-indent (if (and prev-noncomment (string-empty-p prev-text-no-comment))
-                                 (if (> prev-indent 0) prev-indent prev-noncomment-indent)
+     (let ((fallback-indent (if (and prev-noncomment (string-empty-p prev-text-no-comment))
+                                (if (> prev-indent 0) prev-indent prev-noncomment-indent)
                                prev-indent)))
         (if (lean4-indent--line-is-bare-sorry-p prev-text-no-comment)
             (max 0 (- fallback-indent step))
@@ -2048,24 +2105,31 @@ lines that will remain unchanged anyway."
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
-  (let* ((computed (lean4-indent--compute-indent))
-         (current (current-indentation))
-         (tabp (eq this-command 'indent-for-tab-command))
-         (target (cond
-                 ((and tabp (eq last-command 'indent-for-tab-command))
-                   (lean4-indent--cycle-indent computed current))
-                 ((and (not tabp)
-                        (> current 0)
-                        (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
-                                 (or (< current computed)
-                                     lean4-indent--preserve-tactic-region-indentation))
-                            (lean4-indent--acceptable-region-body-indent-p computed current)))
-                   current)
-                  (t computed)))
-         (eolp (eolp)))
-    (indent-line-to (max 0 target))
-    (when eolp
-      (end-of-line))))
+  (let ((current-pos (line-beginning-position)))
+    (if (or (lean4-indent--comment-line-p current-pos)
+            (lean4-indent--string-line-p current-pos))
+        (let ((eolp (eolp)))
+          (indent-line-to (current-indentation))
+          (when eolp
+            (end-of-line)))
+      (let* ((computed (lean4-indent--compute-indent))
+             (current (current-indentation))
+             (tabp (eq this-command 'indent-for-tab-command))
+             (target (cond
+                      ((and tabp (eq last-command 'indent-for-tab-command))
+                       (lean4-indent--cycle-indent computed current))
+                      ((and (not tabp)
+                            (> current 0)
+                            (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
+                                     (or (< current computed)
+                                         lean4-indent--preserve-tactic-region-indentation))
+                                (lean4-indent--acceptable-region-body-indent-p computed current)))
+                       current)
+                      (t computed)))
+             (eolp (eolp)))
+        (indent-line-to (max 0 target))
+        (when eolp
+          (end-of-line))))))
 
 (defun lean4-indent-region-function (start end)
   "Indent nonblank lines between START and END using Lean 4 rules.
@@ -2085,7 +2149,8 @@ repeated whole-declaration rescans near the end of large files."
         (forward-line 1))
       (while (< (point) end-marker)
         (unless (or (looking-at-p "[ \t]*$")
-                    (lean4-indent--comment-line-p (point))
+                    (lean4-indent--string-line-p (point))
+                    (lean4-indent--comment-line-cached-p (point))
                     (and (= (current-indentation) 0)
                          (lean4-indent--line-structural-top-level-anchor-p
                           (point)))
