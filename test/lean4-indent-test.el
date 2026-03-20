@@ -629,7 +629,8 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
          (concat
           "/-- info: Except.ok (\"feat\", some \"x\") -/\n"
           "#guard_msgs in\n"
-          "#eval Parser.run prTitle \"feat(x): foo\"\n")))
+          "#eval Parser.run prTitle \"feat(x): foo\"\n"
+          "#adaptation_note\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -650,6 +651,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "def subgroupEquivAlgEquiv [FiniteDimensional F E] (H : Subgroup Gal(E/F)) :\n"
           "    H ≃* Gal(E/IntermediateField.fixedField H) :=\n"
           " (MulEquiv.subgroupCongr (fixingSubgroup_fixedField H).symm).trans (fixingSubgroupEquiv _)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-first-top-level-body-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "lemma rescale_to_shell (p : Seminorm 𝕜 E) {c : 𝕜} (hc : 1 < ‖c‖) {ε : ℝ} (εpos : 0 < ε) {x : E}\n"
+          "    (hx : p x ≠ 0) :\n"
+          "    ∃ d : 𝕜, d ≠ 0 ∧ p (d • x) < ε ∧ (ε / ‖c‖ ≤ p (d • x)) ∧ (‖d‖⁻¹ ≤ ε⁻¹ * ‖c‖ * p x) :=\n"
+          "let ⟨_, hn⟩ := p.rescale_to_shell_zpow hc εpos hx; ⟨_, hn⟩\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -737,6 +748,17 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-standalone-top-level-nonrec-from-mathlib ()
+  (let ((contents
+         (concat
+          "nonrec\n"
+          "theorem _root_.ContinuousWithinAt.clog {f : α → ℂ} {s : Set α} {x : α}\n"
+          "    (h₁ : ContinuousWithinAt f s x) (h₂ : f x ∈ slitPlane) :\n"
+          "    ContinuousWithinAt (fun t => log (f t)) s x :=\n"
+          "  h₁.clog h₂\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-noncomputable-from-mathlib ()
   (let ((contents
          (concat
@@ -804,6 +826,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "@[inherit_doc OreLocalization]\n"
           "scoped syntax:1075 term noWs atomic(\"[\" term \"⁻¹\" noWs \"]\") : term\n"
           "macro_rules | `($R[$S⁻¹]) => ``(OreLocalization $S $R)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-wrapped-notation-from-mathlib ()
+  (let ((contents
+         (concat
+          "@[inherit_doc]\n"
+          "notation:25 -- `→ᵃᵢ` would be more consistent with the linear isometry notation, but it is uglier\n"
+          "P \" →ᵃⁱ[\" 𝕜:25 \"] \" P₂:0 => AffineIsometry 𝕜 P P₂\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2376,6 +2407,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  omit [Foo α] [Bar β] in\n"
        "  unseal Foo.bar in\n"
        "  macro_rules | `(foo) => `(bar)\n"
+       "  nonrec\n"
        "  private\n"
        "  alias ⟨foo, _⟩ := bar\n"
        "  noncomputable\n")
@@ -2389,6 +2421,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "omit [Foo α] [Bar β] in"
                         "unseal Foo.bar in"
                         "macro_rules | `(foo) => `(bar)"
+                        "nonrec"
                         "private"
                         "alias ⟨foo, _⟩ := bar"
                         "noncomputable"))
@@ -2441,8 +2474,9 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (concat
        "  #guard_msgs in\n"
        "  #eval foo\n"
-       "  #check Nat\n")
-    (dolist (expected '("#guard_msgs in" "#eval foo" "#check Nat"))
+       "  #check Nat\n"
+       "  #adaptation_note\n")
+    (dolist (expected '("#guard_msgs in" "#eval foo" "#check Nat" "#adaptation_note"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
@@ -2622,6 +2656,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "omit [Foo α] [Bar β] in"))
   (should (lean4-indent--line-top-level-anchor-p "unseal Foo.bar in"))
   (should (lean4-indent--line-top-level-anchor-p "macro_rules | `(foo) => `(bar)"))
+  (should (lean4-indent--line-top-level-anchor-p "nonrec"))
   (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))

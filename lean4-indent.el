@@ -123,7 +123,7 @@ current line."
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
     "#check" "#eval" "#guard_msgs"
-    "alias" "noncomputable"
+    "alias" "noncomputable" "nonrec"
     "@[" "scoped["
     "namespace" "section" "public section" "mutual")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
@@ -552,6 +552,7 @@ Return a symbol such as `colon', `coloneq', `by', or
   (let ((case-fold-search nil))
     (or (lean4-indent--line-top-level-declaration-head-p text)
         (lean4-indent--macro-rules-line-p text)
+        (string-match-p "\\`[ \t]*#[[:alpha:]_][[:word:]_]*\\_>" text)
         (string-match-p
          "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
          text)
@@ -569,6 +570,16 @@ wrapped `variable' lines, or nil if TEXT is neither."
    ((lean4-indent--line-top-level-declaration-head-p text) 'declaration)
    ((string-match-p "\\`[ \t]*\\_<variable\\_>" text) 'variable)
    (t nil)))
+
+(defun lean4-indent--line-top-level-wrappable-anchor-p (text)
+  "Return non-nil if TEXT starts a wrapped top-level command header."
+  (let ((case-fold-search nil))
+    (or (string-match-p
+         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
+         text)
+        (string-match-p
+         "\\`[ \t]*\\_<\\(?:syntax\\|macro\\|elab\\)\\_>"
+         text))))
 
 (defun lean4-indent--line-structural-top-level-anchor-p (&optional pos)
   "Return non-nil if line at POS is a real top-level anchor."
@@ -2129,6 +2140,11 @@ lines that will remain unchanged anyway."
           (and (> current 0)
                (eq top-level-kind 'declaration)
                (not body-intro-pos)))
+         (top-level-wrapped-anchor-continuation
+          (and prev-pos
+               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+               (lean4-indent--line-top-level-wrappable-anchor-p prev-text)
+               (<= current (+ prev-indent step))))
          (top-level-variable-continuation
           (and (eq top-level-kind 'variable)
                body-indent
@@ -2146,13 +2162,12 @@ lines that will remain unchanged anyway."
                (= prev-pos body-intro-pos)
                (memq body-intro-kind '(coloneq coloneq-by by where))
                (<= current body-indent)))
-         (zero-indent-first-top-level-delimited-body-line
+         (zero-indent-first-top-level-body-line
           (and (= current 0)
                body-indent
                body-intro-pos
                (= prev-pos body-intro-pos)
-               (memq body-intro-kind '(coloneq coloneq-by by where))
-               (string-match-p "\\`[ \t]*[([{⟨]" current-text)))
+               (memq body-intro-kind '(coloneq coloneq-by by where))))
          (zero-indent-top-level-match-or-branch
           (and (= current 0)
                body-indent
@@ -2176,10 +2191,11 @@ lines that will remain unchanged anyway."
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
          (or top-level-declaration-header-continuation
+             top-level-wrapped-anchor-continuation
              top-level-anchor-continuation
              top-level-variable-continuation
              shallow-first-top-level-body-line
-             zero-indent-first-top-level-delimited-body-line
+             zero-indent-first-top-level-body-line
              (and (> current 0)
                   body-indent
                   (>= current body-indent))
