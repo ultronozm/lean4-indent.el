@@ -552,6 +552,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-irreducible-def-structure-body-from-mathlib ()
+  (let ((contents
+         (concat
+          "irreducible_def preLiftAlgHom {s : A → A → Prop} {f : A →ₐ[S] B}\n"
+          "  (h : ∀ ⦃x y⦄, s x y → f x = f y) : RingQuot s →ₐ[S] B :=\n"
+          "{ toFun := fun x ↦ Quot.lift f\n"
+          "            (by\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-flush-left-wrapped-lemma-binder-from-mathlib ()
   (let ((contents
          (concat
@@ -661,6 +671,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "    (hx : p x ≠ 0) :\n"
           "    ∃ d : 𝕜, d ≠ 0 ∧ p (d • x) < ε ∧ (ε / ‖c‖ ≤ p (d • x)) ∧ (‖d‖⁻¹ ≤ ε⁻¹ * ‖c‖ * p x) :=\n"
           "let ⟨_, hn⟩ := p.rescale_to_shell_zpow hc εpos hx; ⟨_, hn⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-tactic-body-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "instance {J : Type} [Finite J] (Z : J → ModuleCat.{v} k) [∀ j, Module.Finite k (Z j)] :\n"
+          "    Module.Finite k (∐ fun j => Z j : ModuleCat.{v} k) := by\n"
+          "  classical\n"
+          "exact (Module.Finite.equiv_iff (ModuleCat.coprodIsoDirectSum Z).toLinearEquiv).mpr inferInstance\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -826,6 +846,55 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "@[inherit_doc OreLocalization]\n"
           "scoped syntax:1075 term noWs atomic(\"[\" term \"⁻¹\" noWs \"]\") : term\n"
           "macro_rules | `($R[$S⁻¹]) => ``(OreLocalization $S $R)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-unif-hint-from-mathlib ()
+  (let ((contents
+         (concat
+          "/-- This unification hint helps with problems of the form `(forget ?C).obj R =?= carrier R'`. -/\n"
+          "unif_hint forget_obj_eq_coe (R R' : SemiRingCat) where\n"
+          "  R ≟ R' ⊢\n"
+          "  (forget SemiRingCat).obj R ≟ SemiRingCat.carrier R'\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-library-note2-from-mathlib ()
+  (let ((contents
+         (concat
+          "library_note2 «lower cancel priority» /--\n"
+          "We lower the priority of inheriting from cancellative structures.\n"
+          "-/\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-insert-to-additive-translation-from-mathlib ()
+  (let ((contents
+         (concat
+          "/- `LinearOrderedCommGroup` and `LinearOrderedAddCommGroup` no longer exist. -/\n"
+          "insert_to_additive_translation LinearOrderedCommGroup LinearOrderedAddCommGroup\n"
+          "\n"
+          "section LinearOrderedCommGroup\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-attribute-continuation-from-mathlib ()
+  (let ((contents
+         (concat
+          "@[to_additive (attr := simps -isSimp,\n"
+          "deprecated MulEquiv.monoidHomCongrLeftEquiv (since := \"2025-08-12\"))\n"
+          "/-- doc -/]\n"
+          "def precompEquiv : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-scoped-attribute-from-mathlib ()
+  (let ((contents
+         (concat
+          "scoped [BooleanAlgebraOfBooleanRing] attribute [instance 100] BooleanRing.sup\n"
+          "scoped [BooleanAlgebraOfBooleanRing] attribute [instance 100] BooleanRing.inf\n"
+          "open BooleanAlgebraOfBooleanRing\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2378,12 +2447,19 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "partial_fixpoint Foo"))))
 
+(ert-deftest lean4-indent--top-level-irreducible-def-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p
+           "irreducible_def foo : True := by"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "irreducible_def foo : True := by")))
+
 (ert-deftest lean4-indent--top-level-anchor-open-universe-attribute ()
   (lean4-test-with-indent-buffer
       (concat
        "  open Foo\n"
        "  universe u\n"
-       "  attribute [simp] Foo.bar\n")
+       "  attribute [simp] Foo.bar\n"
+       "  scoped [Pointwise] attribute [instance] Foo.bar\n")
     (goto-char (point-min))
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "open Foo"))
@@ -2392,7 +2468,10 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (should (equal (lean4-test--line-string) "universe u"))
     (forward-line 1)
     (funcall indent-line-function)
-    (should (equal (lean4-test--line-string) "attribute [simp] Foo.bar"))))
+    (should (equal (lean4-test--line-string) "attribute [simp] Foo.bar"))
+    (forward-line 1)
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "scoped [Pointwise] attribute [instance] Foo.bar"))))
 
 (ert-deftest lean4-indent--top-level-anchor-more-command-forms-snap-left ()
   (lean4-test-with-indent-buffer
@@ -2408,6 +2487,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  unseal Foo.bar in\n"
        "  macro_rules | `(foo) => `(bar)\n"
        "  nonrec\n"
+       "  unif_hint foo (R R' : C) where\n"
        "  private\n"
        "  alias ⟨foo, _⟩ := bar\n"
        "  noncomputable\n")
@@ -2422,12 +2502,22 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "unseal Foo.bar in"
                         "macro_rules | `(foo) => `(bar)"
                         "nonrec"
+                        "unif_hint foo (R R' : C) where"
                         "private"
                         "alias ⟨foo, _⟩ := bar"
                         "noncomputable"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
+
+(ert-deftest lean4-indent--top-level-library-note2-snaps-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "  library_note2 foo /--\n"
+       "bar\n"
+       "-/\n")
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "library_note2 foo /--"))))
 
 (ert-deftest lean4-indent--top-level-anchor-notation-forms-snap-left ()
   (lean4-test-with-indent-buffer
@@ -2507,6 +2597,13 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
 
+(ert-deftest lean4-indent--top-level-insert-to-additive-translation-snaps-left ()
+  (lean4-test-with-indent-buffer
+      "  insert_to_additive_translation Foo Bar\n"
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string)
+                   "insert_to_additive_translation Foo Bar"))))
+
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-attribute-after-open
  "open Pointwise
@@ -2515,13 +2612,19 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
 
 (lean4-define-final-line-indent-test
  lean4-indent--scoped-attribute-after-where-block
- "protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
+"protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
   smul a S := S.map (MulSemiringAction.toAlgHom _ _ a)
   one_smul S := (congr_arg (fun f => S.map f) (AlgHom.ext <| one_smul R')).trans S.map_id
   mul_smul _a₁ _a₂ S :=
     (congr_arg (fun f => S.map f) (AlgHom.ext <| mul_smul _ _)).trans (S.map_map _ _).symm
 
 scoped[Pointwise] attribute [instance] Subalgebra.pointwiseMulAction")
+
+(lean4-define-final-line-indent-test
+ lean4-indent--spaced-scoped-attribute-after-open
+ "open Pointwise
+
+scoped [Pointwise] attribute [instance] Subalgebra.pointwiseMulAction")
 
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-variable-after-section
@@ -2657,6 +2760,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "unseal Foo.bar in"))
   (should (lean4-indent--line-top-level-anchor-p "macro_rules | `(foo) => `(bar)"))
   (should (lean4-indent--line-top-level-anchor-p "nonrec"))
+  (should (lean4-indent--line-top-level-anchor-p "insert_to_additive_translation Foo Bar"))
+  (should (lean4-indent--line-top-level-anchor-p "unif_hint foo (R R' : C) where"))
+  (should (lean4-indent--line-top-level-anchor-p "library_note2 foo /--"))
   (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))

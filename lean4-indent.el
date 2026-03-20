@@ -119,7 +119,10 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
     "grind_pattern" "irreducible_def" "proof_wanted" "set_option" "open" "universe" "variable"
+    "library_note2"
     "export" "include" "omit" "unseal" "partial"
+    "insert_to_additive_translation"
+    "unif_hint"
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
     "#check" "#eval" "#guard_msgs"
@@ -545,7 +548,7 @@ Return a symbol such as `colon', `coloneq', `by', or
   "Return non-nil if TEXT starts a top-level declaration header."
   (let ((case-fold-search nil))
     (string-match-p
-     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
+     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|irreducible_def\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
      text)))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
@@ -553,6 +556,9 @@ Return a symbol such as `colon', `coloneq', `by', or
     (or (lean4-indent--line-top-level-declaration-head-p text)
         (lean4-indent--macro-rules-line-p text)
         (string-match-p "\\`[ \t]*#[[:alpha:]_][[:word:]_]*\\_>" text)
+        (string-match-p
+         "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-*\\[[^]\n]+\\]\\s-+\\)?\\_<attribute\\_>"
+         text)
         (string-match-p
          "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
          text)
@@ -602,6 +608,27 @@ wrapped `variable' lines, or nil if TEXT is neither."
     (if (and context (plist-member context :comment-line))
         (plist-get context :comment-line)
       (lean4-indent--comment-line-p pos))))
+
+(defun lean4-indent--inside-open-top-level-attribute-block-p ()
+  "Return non-nil when point is on a continuation line of a top-level `@[` block."
+  (let* ((context (lean4-indent--region-line-context (point))))
+    (if (and context (plist-member context :open-top-level-attribute-block))
+        (plist-get context :open-top-level-attribute-block)
+      (let ((pos (lean4-indent--prev-nonblank))
+            found)
+        (while (and pos (not found))
+          (let ((text (lean4-indent--line-text pos)))
+            (cond
+             ((lean4-indent--starts-with-p text "@\\[")
+              (setq found (not (lean4-indent--line-contains-balanced-bracket-p pos))))
+             ((lean4-indent--line-contains-balanced-bracket-p pos)
+              (setq pos nil))
+             (t
+              (setq pos (save-excursion
+                          (goto-char pos)
+                          (forward-line -1)
+                          (lean4-indent--prev-nonblank)))))))
+        found))))
 
 (defun lean4-indent--declaration-inline-body-intro-kind (pos)
   "Return declaration body-intro kind for line at POS, or nil.
@@ -1238,7 +1265,8 @@ not inside such a declaration."
            (contexts (make-vector (max 1 line-count) nil))
            (block-stack nil)
            (calc-stack nil)
-           (indent-stack nil))
+           (indent-stack nil)
+           (open-top-level-attribute-block nil))
       (while (not (eobp))
         (let* ((pos (point))
                (text (lean4-indent--line-text pos))
@@ -1275,6 +1303,7 @@ not inside such a declaration."
                           (when (eq (car entry) 'mutual)
                             (throw 'mutual (cdr entry))))
                         nil)
+                      :open-top-level-attribute-block open-top-level-attribute-block
                       :block-indent (cdar block-stack)
                       :string-line string-line
                       :comment-line comment-line
@@ -1285,7 +1314,15 @@ not inside such a declaration."
                       :calc-step-indent (plist-get (car calc-stack) :last-step-indent)))
           (when nonblank
             (push (cons (copy-marker pos) indent) indent-stack))
+          (when (and nonblank
+                     open-top-level-attribute-block
+                     (lean4-indent--line-contains-balanced-bracket-p pos))
+            (setq open-top-level-attribute-block nil))
           (when significant
+            (when (and structural-top-level-anchor
+                       (lean4-indent--starts-with-p text "@\\[")
+                       (not (lean4-indent--line-contains-balanced-bracket-p pos)))
+              (setq open-top-level-attribute-block t))
             (when (and calc-stack
                        (> indent (plist-get (car calc-stack) :indent))
                        (or (lean4-indent--line-starts-with-calc-step-p text)
@@ -2168,6 +2205,15 @@ lines that will remain unchanged anyway."
                body-intro-pos
                (= prev-pos body-intro-pos)
                (memq body-intro-kind '(coloneq coloneq-by by where))))
+         (zero-indent-top-level-tactic-body-line
+          (and (= current 0)
+               body-indent
+               (memq body-intro-kind '(by coloneq-by))
+               prev-pos
+               (> prev-indent 0)))
+         (zero-indent-top-level-attribute-continuation
+          (and (= current 0)
+               (lean4-indent--inside-open-top-level-attribute-block-p)))
          (zero-indent-top-level-match-or-branch
           (and (= current 0)
                body-indent
@@ -2196,6 +2242,8 @@ lines that will remain unchanged anyway."
              top-level-variable-continuation
              shallow-first-top-level-body-line
              zero-indent-first-top-level-body-line
+             zero-indent-top-level-tactic-body-line
+             zero-indent-top-level-attribute-continuation
              (and (> current 0)
                   body-indent
                   (>= current body-indent))
