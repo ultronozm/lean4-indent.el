@@ -2138,6 +2138,46 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "attribute [simp] Foo.bar"))))
 
+(ert-deftest lean4-indent--top-level-anchor-more-command-forms-snap-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "  initialize_simps_projections Foo (bar → baz)\n"
+       "  grind_pattern Foo.bar => True\n"
+       "  export OneMemClass (one_mem)\n"
+       "  include hf hg\n"
+       "  include S f in\n"
+       "  alias ⟨foo, _⟩ := bar\n"
+       "  noncomputable\n")
+    (dolist (expected '("initialize_simps_projections Foo (bar → baz)"
+                        "grind_pattern Foo.bar => True"
+                        "export OneMemClass (one_mem)"
+                        "include hf hg"
+                        "include S f in"
+                        "alias ⟨foo, _⟩ := bar"
+                        "noncomputable"))
+      (funcall indent-line-function)
+      (should (equal (lean4-test--line-string) expected))
+      (forward-line 1))))
+
+(ert-deftest lean4-indent--top-level-anchor-notation-forms-snap-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "  local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)\n"
+       "  scoped infixl:50 \" ~> \" => Promises\n"
+       "  prefix:100 \"foo\" => bar\n")
+    (dolist (expected '("local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"
+                        "scoped infixl:50 \" ~> \" => Promises"
+                        "prefix:100 \"foo\" => bar"))
+      (funcall indent-line-function)
+      (should (equal (lean4-test--line-string) expected))
+      (forward-line 1))))
+
+(ert-deftest lean4-indent--top-level-nonrec-theorem-snaps-left ()
+  (lean4-test-with-indent-buffer "  nonrec theorem foo : True := by\n"
+    (goto-char (point-min))
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "nonrec theorem foo : True := by"))))
+
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-attribute-after-open
  "open Pointwise
