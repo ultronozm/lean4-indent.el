@@ -595,6 +595,34 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-private-local-instance-from-mathlib ()
+  (let ((contents
+         (concat
+          "instance : InverseSystem (embFunctor F E) where\n"
+          "  map_self _ _ := rfl\n"
+          "  map_map _ _ _ _ _ _ := rfl\n\n"
+          "private local instance (i : ι) : Decidable (succ i = i) :=\n"
+          "  .isFalse (lt_succ i).ne'\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-shallow-first-top-level-body-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "def subgroupEquivAlgEquiv [FiniteDimensional F E] (H : Subgroup Gal(E/F)) :\n"
+          "    H ≃* Gal(E/IntermediateField.fixedField H) :=\n"
+          " (MulEquiv.subgroupCongr (fixingSubgroup_fixedField H).symm).trans (fixingSubgroupEquiv _)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-delimited-top-level-body-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "lemma normal_iff_forall_fieldRange_eq : Normal F K ↔ ∀ σ : K →ₐ[F] L, σ.fieldRange = K :=\n"
+          "⟨@AlgHom.fieldRange_of_normal (E := K), normal_iff_forall_fieldRange_le.2 ∘ fun h σ ↦ (h σ).le⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-brace-body-from-mathlib ()
   (let ((contents
          (concat
@@ -700,6 +728,37 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "include S f in\n"
           "lemma foo : True := by\n"
           "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-omit-in-from-mathlib ()
+  (let ((contents
+         (concat
+          "variable {K L M} in\n"
+          "omit [IsScalarTower K L M] [Algebra L M] in\n"
+          "lemma foo : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-private-modifier-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "lemma foo : True := by\n"
+          "  trivial\n\n"
+          "private\n"
+          "theorem bar : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-non-top-level-meta-application-from-mathlib ()
+  (let ((contents
+         (concat
+          "meta def delabGal : Delab := whenNotPPOption getPPExplicit <| whenPPOption getPPNotation do\n"
+          "  -- comment\n"
+          "  Meta.withLocalInstances (← getLCtx).decls.toList.reduceOption do\n"
+          "  guard True\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2237,6 +2296,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  export OneMemClass (one_mem)\n"
        "  include hf hg\n"
        "  include S f in\n"
+       "  omit [Foo α] [Bar β] in\n"
+       "  private\n"
        "  alias ⟨foo, _⟩ := bar\n"
        "  noncomputable\n")
     (dolist (expected '("initialize_simps_projections Foo (bar → baz)"
@@ -2244,6 +2305,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "export OneMemClass (one_mem)"
                         "include hf hg"
                         "include S f in"
+                        "omit [Foo α] [Bar β] in"
+                        "private"
                         "alias ⟨foo, _⟩ := bar"
                         "noncomputable"))
       (funcall indent-line-function)
@@ -2471,6 +2534,8 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "export OneMemClass (one_mem)"))
   (should (lean4-indent--line-top-level-anchor-p "include hf hg"))
   (should (lean4-indent--line-top-level-anchor-p "include S f in"))
+  (should (lean4-indent--line-top-level-anchor-p "omit [Foo α] [Bar β] in"))
+  (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))
   (should (lean4-indent--line-top-level-anchor-p "prefix:100 \"foo\" => bar"))
@@ -2480,6 +2545,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
 (ert-deftest lean4-indent--top-level-scoped-instance-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "scoped instance foo : True := by"))
   (should (lean4-indent--line-top-level-anchor-p "scoped instance foo : True := by")))
+
+(ert-deftest lean4-indent--top-level-private-local-instance-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p
+           "private local instance (i : ι) : Decidable (succ i = i) := foo"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "private local instance (i : ι) : Decidable (succ i = i) := foo")))
+
+(ert-deftest lean4-indent--top-level-anchor-classification-is-case-sensitive ()
+  (should-not (lean4-indent--line-top-level-anchor-p
+               "Meta.withLocalInstances (← getLCtx).decls.toList.reduceOption do"))
+  (should-not (lean4-indent--line-top-level-declaration-head-p
+               "Meta.definitelyNotADeclaration")))
 
 (ert-deftest lean4-indent--top-level-public-register-option-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p

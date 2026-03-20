@@ -119,7 +119,8 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
     "grind_pattern" "set_option" "open" "universe" "variable"
-    "export" "include" "partial"
+    "export" "include" "omit" "partial"
+    "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
     "#check" "#eval" "#guard_msgs"
     "alias" "noncomputable"
@@ -542,19 +543,21 @@ Return a symbol such as `colon', `coloneq', `by', or
 
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
-  (string-match-p
-   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
-   text))
+  (let ((case-fold-search nil))
+    (string-match-p
+     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
+     text)))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
-  (or (lean4-indent--line-top-level-declaration-head-p text)
-      (string-match-p
-       "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
-       text)
-      (string-match-p
-       "\\`[ \t]*\\(?:\\_<meta\\_>\\s-+\\)?\\_<register_option\\_>"
-       text)
-      (string-match-p lean4-indent--top-level-anchors-re text)))
+  (let ((case-fold-search nil))
+    (or (lean4-indent--line-top-level-declaration-head-p text)
+        (string-match-p
+         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
+         text)
+        (string-match-p
+         "\\`[ \t]*\\(?:\\_<meta\\_>\\s-+\\)?\\_<register_option\\_>"
+         text)
+        (string-match-p lean4-indent--top-level-anchors-re text))))
 
 (defun lean4-indent--line-top-level-binder-head-kind (text)
   "Classify a top-level binder head line TEXT.
@@ -2111,7 +2114,22 @@ lines that will remain unchanged anyway."
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
          (body-indent (plist-get top-level-context :body-indent))
+         (body-intro-pos (plist-get top-level-context :body-intro-pos))
          (body-intro-kind (plist-get top-level-context :body-intro-kind))
+         (shallow-first-top-level-body-line
+          (and (> current 0)
+               body-indent
+               body-intro-pos
+               (= prev-pos body-intro-pos)
+               (memq body-intro-kind '(coloneq coloneq-by by where))
+               (<= current body-indent)))
+         (zero-indent-first-top-level-delimited-body-line
+          (and (= current 0)
+               body-indent
+               body-intro-pos
+               (= prev-pos body-intro-pos)
+               (memq body-intro-kind '(coloneq coloneq-by by where))
+               (string-match-p "\\`[ \t]*[([{⟨]" current-text)))
          (zero-indent-top-level-match-or-branch
           (and (= current 0)
                body-indent
@@ -2134,7 +2152,9 @@ lines that will remain unchanged anyway."
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
-         (or (and (> current 0)
+         (or shallow-first-top-level-body-line
+             zero-indent-first-top-level-delimited-body-line
+             (and (> current 0)
                   body-indent
                   (>= current body-indent))
              zero-indent-top-level-match-or-branch
