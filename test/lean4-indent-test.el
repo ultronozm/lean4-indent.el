@@ -552,6 +552,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-flush-left-wrapped-lemma-binder-from-mathlib ()
+  (let ((contents
+         (concat
+          "lemma source_subset_preimage_source\n"
+          " (h : LiftSourceTargetPropertyAt I I' n f x P) :\n"
+          "    h.domChart.source ⊆ f ⁻¹' h.codChart.source :=\n"
+          "  h.localPresentationAt.source_subset_preimage_source\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-alias-rhs-from-mathlib ()
   (let ((contents
          (concat

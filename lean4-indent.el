@@ -2124,6 +2124,10 @@ lines that will remain unchanged anyway."
          (body-indent (plist-get top-level-context :body-indent))
          (body-intro-pos (plist-get top-level-context :body-intro-pos))
          (body-intro-kind (plist-get top-level-context :body-intro-kind))
+         (top-level-declaration-header-continuation
+          (and (> current 0)
+               (eq top-level-kind 'declaration)
+               (not body-intro-pos)))
          (top-level-variable-continuation
           (and (eq top-level-kind 'variable)
                body-indent
@@ -2170,7 +2174,8 @@ lines that will remain unchanged anyway."
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
-         (or top-level-anchor-continuation
+         (or top-level-declaration-header-continuation
+             top-level-anchor-continuation
              top-level-variable-continuation
              shallow-first-top-level-body-line
              zero-indent-first-top-level-delimited-body-line
