@@ -577,6 +577,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-deriving-from-mathlib ()
+  (let ((contents
+         (concat
+          "inductive Foo where\n"
+          "  | bar\n"
+          "deriving BEq\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-brace-body-from-mathlib ()
   (let ((contents
          (concat
@@ -2251,6 +2260,16 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (forward-line 1)
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "meta register_option mathlib.foo : Bool := {"))))
+
+(ert-deftest lean4-indent--top-level-deriving-snaps-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "inductive Foo where\n"
+       "  | bar\n"
+       "  deriving BEq\n")
+    (forward-line 2)
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "deriving BEq"))))
 
 (ert-deftest lean4-indent--top-level-more-command-forms-snap-left ()
   (lean4-test-with-indent-buffer

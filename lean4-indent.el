@@ -510,7 +510,7 @@ Return a symbol such as `colon', `coloneq', `by', or
    ((string-match-p lean4-indent--re-ends-decreasing text) 'decreasing)
    ((string-match-p "\\`[ \t]*\\_<\\(?:have\\|suffices\\)\\_>\\s-*\\'" text)
     'bare-have-suffices)
-   ((lean4-indent--ends-with-p text "{") 'open-brace)
+   ((string-match-p "{\\s-*\\(?:--.*\\)?$" text) 'open-brace)
    (t nil)))
 
 (defun lean4-indent--line-ends-with-op-p (text)
@@ -576,7 +576,7 @@ This normalizes header lines like `foo := {' to `coloneq' so top-level
 declaration context reflects the real declaration body, not just the trailing
 delimiter."
   (when pos
-    (let* ((text (lean4-indent--line-text-no-comment pos))
+    (let* ((text (lean4-indent--line-text pos))
            (kind (lean4-indent--line-body-intro-kind text)))
       (if (and (eq kind 'open-brace)
                (lean4-indent--line-has-outer-coloneq-p pos))
@@ -1159,7 +1159,7 @@ not inside such a declaration."
         (let* ((pos (point))
                (text (lean4-indent--line-text pos)))
           (unless (or (lean4-indent--line-blank-p text)
-                      (lean4-indent--comment-line-p pos))
+                      (lean4-indent--comment-line-cached-p pos))
             (when (lean4-indent--line-structural-top-level-anchor-p pos)
               (setq current-top-pos (copy-marker pos)
                     current-top-is-decl (lean4-indent--line-top-level-declaration-head-p text)
@@ -1170,9 +1170,8 @@ not inside such a declaration."
             (when (and current-top-pos current-top-is-decl
                        (not current-body-intro-final-p))
               (let ((kind (if (= pos current-top-pos)
-                              (lean4-indent--declaration-inline-body-intro-kind pos)
-                            (lean4-indent--line-body-intro-kind
-                             (lean4-indent--line-text-no-comment pos)))))
+                               (lean4-indent--declaration-inline-body-intro-kind pos)
+                             (lean4-indent--line-body-intro-kind text))))
                 (cond
                  ((memq kind '(coloneq-by coloneq by where))
                   (setq current-body-intro-pos (copy-marker pos)
@@ -1210,9 +1209,8 @@ not inside such a declaration."
                (comment-line (or (nth 4 ppss)
                                  (string-prefix-p "--" trim)
                                  (string-prefix-p "/-" trim)))
-               (text-no-comment (lean4-indent--line-text-no-comment pos))
                (structural-top-level-anchor
-                (and (lean4-indent--line-top-level-anchor-p text-no-comment)
+                (and (lean4-indent--line-top-level-anchor-p text)
                      (= (car ppss) 0)
                      (not (nth 3 ppss))
                      (not (nth 4 ppss))))
@@ -1235,9 +1233,9 @@ not inside such a declaration."
                           (when (eq (car entry) 'mutual)
                             (throw 'mutual (cdr entry))))
                         nil)
+                      :block-indent (cdar block-stack)
                       :string-line string-line
                       :comment-line comment-line
-                      :text-no-comment text-no-comment
                       :structural-top-level-anchor structural-top-level-anchor
                       :anchor-pos (caar indent-stack)
                       :anchor-indent (cdar indent-stack)
@@ -1271,26 +1269,30 @@ not inside such a declaration."
 
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
-  (save-excursion
-    (goto-char start-pos)
-    (let ((found nil)
-          (depth 0))
-      (while (and (not found) (not (bobp)))
-        (forward-line -1)
-        (let ((text (lean4-indent--line-text (point))))
-          (unless (or (lean4-indent--line-blank-p text)
-                      (lean4-indent--comment-line-p (point)))
-            (cond
-             ((lean4-indent--starts-with-p text lean4-indent--re-starts-end)
-              (setq depth (1+ depth)))
-             ((or (lean4-indent--starts-with-p text lean4-indent--re-starts-namespace)
-                  (lean4-indent--starts-with-p text lean4-indent--re-starts-section)
-                  (lean4-indent--starts-with-p text lean4-indent--re-starts-public-section)
-                  (lean4-indent--starts-with-p text lean4-indent--re-starts-mutual))
-              (if (> depth 0)
-                  (setq depth (1- depth))
-                (setq found (lean4-indent--line-indent (point)))))))))
-      (or found 0))))
+  (let* ((context (lean4-indent--region-line-context start-pos))
+         (cached-indent (and context (plist-get context :block-indent))))
+    (if cached-indent
+        cached-indent
+      (save-excursion
+        (goto-char start-pos)
+        (let ((found nil)
+              (depth 0))
+          (while (and (not found) (not (bobp)))
+            (forward-line -1)
+            (let ((text (lean4-indent--line-text (point))))
+              (unless (or (lean4-indent--line-blank-p text)
+                          (lean4-indent--comment-line-p (point)))
+                (cond
+                 ((lean4-indent--starts-with-p text lean4-indent--re-starts-end)
+                  (setq depth (1+ depth)))
+                 ((or (lean4-indent--starts-with-p text lean4-indent--re-starts-namespace)
+                      (lean4-indent--starts-with-p text lean4-indent--re-starts-section)
+                      (lean4-indent--starts-with-p text lean4-indent--re-starts-public-section)
+                      (lean4-indent--starts-with-p text lean4-indent--re-starts-mutual))
+                  (if (> depth 0)
+                      (setq depth (1- depth))
+                    (setq found (lean4-indent--line-indent (point)))))))))
+          (or found 0))))))
 
 (defun lean4-indent--prev-noncomment (start-pos)
   "Return position of previous nonblank, non-comment line before START-POS."
@@ -1533,6 +1535,10 @@ not inside such a declaration."
      ;; 3) Top-level snap
      ((lean4-indent--line-structural-top-level-anchor-p (point))
       0)
+     ;; 3.25) `deriving` after an inductive/structure body aligns with the declaration head.
+     ((and (lean4-indent--starts-with-p current-text "\\_<deriving\\_>")
+           top-level-context)
+      (lean4-indent--line-indent (plist-get top-level-context :pos)))
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
@@ -2105,13 +2111,25 @@ lines that will remain unchanged anyway."
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
-  (let ((current-pos (line-beginning-position)))
-    (if (or (lean4-indent--comment-line-p current-pos)
-            (lean4-indent--string-line-p current-pos))
+  (let* ((current-pos (line-beginning-position))
+         (current-text (lean4-indent--line-text current-pos)))
+    (cond
+     ((lean4-indent--starts-with-p current-text "\\_<end\\_>")
+      (let ((eolp (eolp))
+            (target (if (lean4-indent--prev-nonblank)
+                        (lean4-indent--find-end-anchor-indent current-pos)
+                      0)))
+        (indent-line-to (max 0 target))
+        (when eolp
+          (end-of-line))))
+     ((or (lean4-indent--comment-line-p current-pos)
+          (lean4-indent--string-line-p current-pos))
         (let ((eolp (eolp)))
           (indent-line-to (current-indentation))
           (when eolp
             (end-of-line)))
+      )
+     (t
       (let* ((computed (lean4-indent--compute-indent))
              (current (current-indentation))
              (tabp (eq this-command 'indent-for-tab-command))
@@ -2129,7 +2147,7 @@ lines that will remain unchanged anyway."
              (eolp (eolp)))
         (indent-line-to (max 0 target))
         (when eolp
-          (end-of-line))))))
+          (end-of-line)))))))
 
 (defun lean4-indent-region-function (start end)
   "Indent nonblank lines between START and END using Lean 4 rules.
@@ -2138,11 +2156,13 @@ This is a region-aware companion to `lean4-indent-line-function'.  It uses a
 single forward pass to cache enclosing top-level declaration context, avoiding
 repeated whole-declaration rescans near the end of large files."
   (let ((end-marker (copy-marker end))
-        (lean4-indent--region-top-level-contexts
-         (lean4-indent--build-top-level-context-cache lean4-indent-offset))
         (lean4-indent--region-line-contexts
          (lean4-indent--build-region-line-context-cache))
+        (lean4-indent--region-top-level-contexts
+         nil)
         (lean4-indent--preserve-tactic-region-indentation t))
+    (setq lean4-indent--region-top-level-contexts
+          (lean4-indent--build-top-level-context-cache lean4-indent-offset))
     (save-excursion
       (goto-char start)
       (unless (bolp)
