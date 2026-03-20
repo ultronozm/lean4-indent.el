@@ -840,6 +840,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-suppress-compilation-in-from-mathlib ()
+  (let ((contents
+         (concat
+          "suppress_compilation in\n"
+          "/-- doc -/\n"
+          "def foo : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-inline-macro-rules-from-mathlib ()
   (let ((contents
          (concat
@@ -2485,6 +2495,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  include S f in\n"
        "  omit [Foo α] [Bar β] in\n"
        "  unseal Foo.bar in\n"
+       "  suppress_compilation in\n"
        "  macro_rules | `(foo) => `(bar)\n"
        "  nonrec\n"
        "  unif_hint foo (R R' : C) where\n"
@@ -2500,6 +2511,7 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "include S f in"
                         "omit [Foo α] [Bar β] in"
                         "unseal Foo.bar in"
+                        "suppress_compilation in"
                         "macro_rules | `(foo) => `(bar)"
                         "nonrec"
                         "unif_hint foo (R R' : C) where"
@@ -2758,6 +2770,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "include S f in"))
   (should (lean4-indent--line-top-level-anchor-p "omit [Foo α] [Bar β] in"))
   (should (lean4-indent--line-top-level-anchor-p "unseal Foo.bar in"))
+  (should (lean4-indent--line-top-level-anchor-p "suppress_compilation in"))
   (should (lean4-indent--line-top-level-anchor-p "macro_rules | `(foo) => `(bar)"))
   (should (lean4-indent--line-top-level-anchor-p "nonrec"))
   (should (lean4-indent--line-top-level-anchor-p "insert_to_additive_translation Foo Bar"))
