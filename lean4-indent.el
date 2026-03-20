@@ -117,9 +117,9 @@ current line."
   "Keywords treated as simp-like tactics.")
 
 (defconst lean4-indent--top-level-anchors
-  '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
+  '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
     "grind_pattern" "set_option" "open" "universe" "variable"
-    "export" "include"
+    "export" "include" "partial"
     "termination_by" "decreasing_by"
     "alias" "noncomputable"
     "@[" "scoped["
@@ -495,7 +495,7 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
   (string-match-p
-   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|register_option\\)\\_>"
+   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
    text))
 
 (defun lean4-indent--line-top-level-anchor-p (text)

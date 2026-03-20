@@ -587,6 +587,22 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-more-tactic-linter-toplevels ()
+  (dolist (contents
+           (list
+            (concat
+             "initialize addLinter commandRangesLinter\n")
+            (concat
+             "partial\n"
+             "def parallelScanAux (as : Array FormatError) (L M : String) : Array FormatError :=\n"
+             "  as\n")
+            (concat
+             "elab (name := deprecated_modules)\n"
+             "    \"deprecated_module foo\" : command => do\n"
+             "  pure ()\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-nonrec-and-alias-from-mathlib ()
   (let ((contents
          (concat
@@ -2216,6 +2232,19 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (forward-line 1)
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "meta register_option mathlib.foo : Bool := {"))))
+
+(ert-deftest lean4-indent--top-level-more-command-forms-snap-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "  initialize addLinter commandRangesLinter\n"
+       "  partial\n"
+       "  elab (name := deprecated_modules)\n")
+    (dolist (expected '("initialize addLinter commandRangesLinter"
+                        "partial"
+                        "elab (name := deprecated_modules)"))
+      (funcall indent-line-function)
+      (should (equal (lean4-test--line-string) expected))
+      (forward-line 1))))
 
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-attribute-after-open
