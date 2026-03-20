@@ -567,7 +567,7 @@ Return a symbol such as `colon', `coloneq', `by', or
   "Return non-nil if TEXT starts a top-level declaration header."
   (let ((case-fold-search nil))
     (string-match-p
-     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|irreducible_def\\|simproc_decl\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
+     "\\`[ \t]*\\(?:@\\[[^]\n]+\\]\\s-*\\)*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|irreducible_def\\|simproc_decl\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
      text)))
 
 (defun lean4-indent--line-top-level-anchor-p (text)

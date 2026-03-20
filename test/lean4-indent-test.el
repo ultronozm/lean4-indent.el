@@ -861,6 +861,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-body-after-inline-attribute ()
+  (let ((contents
+         (concat
+          "@[simp] lemma MeasureTheory.Measure.cdf_eq_iff (μ ν : Measure ℝ) [IsProbabilityMeasure μ]\n"
+          "    [IsProbabilityMeasure ν] :\n"
+          "    cdf μ = cdf ν ↔ μ = ν :=\n"
+          "⟨eq_of_cdf μ ν, fun h ↦ by rw [h]⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-flush-left-wrapped-variable-block-from-mathlib ()
   (let ((contents
          (concat
@@ -3037,6 +3047,12 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
            "public register_option linter.privateModule : Bool := {"))
   (should (lean4-indent--line-top-level-anchor-p
            "public register_option linter.privateModule : Bool := {")))
+
+(ert-deftest lean4-indent--top-level-inline-attribute-declaration-is-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p
+           "@[simp] lemma foo : True := by"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "@[simp] lemma foo : True := by")))
 
 (ert-deftest lean4-indent--top-level-nonrec-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "nonrec theorem foo : True := by"))
