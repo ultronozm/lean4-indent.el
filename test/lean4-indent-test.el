@@ -533,12 +533,79 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-local-grind-pattern-from-mathlib ()
+  (let ((contents
+         (concat
+          "-- This pattern is convenient in this file.\n"
+          "local grind_pattern card_le_card => #s, #t\n"
+          "\n"
+          "@[mono]\n"
+          "theorem card_mono : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-standalone-scoped-notation-prefix-from-mathlib ()
+  (let ((contents
+         (concat
+          "/-- doc -/\n"
+          "scoped\n"
+          "notation:50 c \" ≺[\" m:25 \"] \" d:50 => True\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-proof-wanted-from-mathlib ()
   (let ((contents
          (concat
           "/-- doc -/\n"
           "proof_wanted angle_eq_angle_add_angle_iff {x y z : V} (hy : y ≠ 0) :\n"
           "    angle x z = angle x y + angle y z ↔ True\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-extend-docs-from-mathlib ()
+  (let ((contents
+         (concat
+          "-- comment\n"
+          "extend_docs Finsupp.fun₀ after\n"
+          "  \"doc string\"\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-run-cmd-from-mathlib ()
+  (let ((contents
+         (concat
+          "run_cmd Lean.Elab.Command.liftTermElabM do\n"
+          "  pure ()\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-branches-from-mathlib ()
+  (let ((contents
+         (concat
+          "lemma isChain_flatten : ∀ {L : List (List α)}, [] ∉ L →\n"
+          "    (IsChain R L.flatten ↔ True) :=\n"
+          "| [], _ => by simp\n"
+          "| [l], _ => by simp [flatten]\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-prefix-arg-from-mathlib ()
+  (let ((contents
+         (concat
+          "local prefix:arg \"ι\" => Ordnode.singleton\n"
+          "\n"
+          "instance : Singleton α (Ordnode α) :=\n"
+          "  ⟨Ordnode.singleton⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-mk-iff-of-inductive-prop-from-mathlib ()
+  (let ((contents
+         (concat
+          "mk_iff_of_inductive_prop Sum.LiftRel Sum.liftRel_iff\n"
+          "\n"
+          "namespace LiftRel\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -559,6 +626,19 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "  (h : ∀ ⦃x y⦄, s x y → f x = f y) : RingQuot s →ₐ[S] B :=\n"
           "{ toFun := fun x ↦ Quot.lift f\n"
           "            (by\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-where-and-simproc-from-mathlib ()
+  (let ((contents
+         (concat
+          "def prodEq (f : α → α) : α :=\n"
+          "  foo\n"
+          "where\n"
+          "  bar : α := foo\n"
+          "\n"
+          "simproc_decl sum_univ_ofNat (∑ _ : Fin _, _) := .ofQ fun u _ e => do\n"
+          "  pure .continue\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2463,6 +2543,12 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
   (should (lean4-indent--line-top-level-anchor-p
            "irreducible_def foo : True := by")))
 
+(ert-deftest lean4-indent--top-level-simproc-decl-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p
+           "simproc_decl foo (bar) := .ofQ fun _ => do"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "simproc_decl foo (bar) := .ofQ fun _ => do")))
+
 (ert-deftest lean4-indent--top-level-anchor-open-universe-attribute ()
   (lean4-test-with-indent-buffer
       (concat
@@ -2488,6 +2574,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (concat
        "  initialize_simps_projections Foo (bar → baz)\n"
        "  grind_pattern Foo.bar => True\n"
+       "  local grind_pattern Foo.bar => True\n"
+       "  scoped\n"
        "  irreducible_def foo : True := by\n"
        "  proof_wanted foo : True\n"
        "  export OneMemClass (one_mem)\n"
@@ -2501,9 +2589,14 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  unif_hint foo (R R' : C) where\n"
        "  private\n"
        "  alias ⟨foo, _⟩ := bar\n"
-       "  noncomputable\n")
+       "  noncomputable\n"
+       "  extend_docs Foo.bar after\n"
+       "  run_cmd Foo.bar do\n"
+       "  mk_iff_of_inductive_prop Foo.bar Foo.baz\n")
     (dolist (expected '("initialize_simps_projections Foo (bar → baz)"
                         "grind_pattern Foo.bar => True"
+                        "local grind_pattern Foo.bar => True"
+                        "scoped"
                         "irreducible_def foo : True := by"
                         "proof_wanted foo : True"
                         "export OneMemClass (one_mem)"
@@ -2517,7 +2610,10 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
                         "unif_hint foo (R R' : C) where"
                         "private"
                         "alias ⟨foo, _⟩ := bar"
-                        "noncomputable"))
+                        "noncomputable"
+                        "extend_docs Foo.bar after"
+                        "run_cmd Foo.bar do"
+                        "mk_iff_of_inductive_prop Foo.bar Foo.baz"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
@@ -2534,12 +2630,14 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
 (ert-deftest lean4-indent--top-level-anchor-notation-forms-snap-left ()
   (lean4-test-with-indent-buffer
       (concat
-       "  local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)\n"
-       "  scoped infixl:50 \" ~> \" => Promises\n"
-       "  prefix:100 \"foo\" => bar\n")
+      "  local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)\n"
+      "  scoped infixl:50 \" ~> \" => Promises\n"
+      "  prefix:100 \"foo\" => bar\n"
+      "  local prefix:arg \"ι\" => Ordnode.singleton\n")
     (dolist (expected '("local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"
                         "scoped infixl:50 \" ~> \" => Promises"
-                        "prefix:100 \"foo\" => bar"))
+                        "prefix:100 \"foo\" => bar"
+                        "local prefix:arg \"ι\" => Ordnode.singleton"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
@@ -2776,10 +2874,15 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "insert_to_additive_translation Foo Bar"))
   (should (lean4-indent--line-top-level-anchor-p "unif_hint foo (R R' : C) where"))
   (should (lean4-indent--line-top-level-anchor-p "library_note2 foo /--"))
+  (should (lean4-indent--line-top-level-anchor-p "extend_docs Foo.bar after"))
+  (should (lean4-indent--line-top-level-anchor-p "run_cmd Foo.bar do"))
+  (should (lean4-indent--line-top-level-anchor-p "mk_iff_of_inductive_prop Foo.bar Foo.baz"))
   (should (lean4-indent--line-top-level-anchor-p "private"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
+  (should (lean4-indent--line-top-level-anchor-p "local grind_pattern foo => True"))
   (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))
   (should (lean4-indent--line-top-level-anchor-p "prefix:100 \"foo\" => bar"))
+  (should (lean4-indent--line-top-level-anchor-p "local prefix:arg \"ι\" => Ordnode.singleton"))
   (should (lean4-indent--line-top-level-anchor-p
            "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
 

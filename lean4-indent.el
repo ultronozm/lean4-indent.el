@@ -119,9 +119,12 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
     "grind_pattern" "irreducible_def" "proof_wanted" "set_option" "open" "universe" "variable"
+    "extend_docs"
+    "run_cmd"
     "library_note2"
     "export" "include" "omit" "unseal" "suppress_compilation" "partial"
     "insert_to_additive_translation"
+    "mk_iff_of_inductive_prop"
     "unif_hint"
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
@@ -263,6 +266,18 @@ current line."
         (let ((text (lean4-indent--line-text (point))))
           (unless (lean4-indent--line-blank-p text)
             (setq found (point)))))
+      found)))
+
+(defun lean4-indent--next-nonblank ()
+  "Return position of next nonblank line or nil."
+  (save-excursion
+    (let ((found nil))
+      (while (and (not found) (not (eobp)))
+        (forward-line 1)
+        (when (and (not (eobp))
+                   (let ((text (lean4-indent--line-text (point))))
+                     (not (lean4-indent--line-blank-p text))))
+          (setq found (point))))
       found)))
 
 ;;; Paren helpers
@@ -548,7 +563,7 @@ Return a symbol such as `colon', `coloneq', `by', or
   "Return non-nil if TEXT starts a top-level declaration header."
   (let ((case-fold-search nil))
     (string-match-p
-     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|irreducible_def\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
+     "\\`[ \t]*\\(?:\\_<\\(?:scoped\\|local\\|protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|irreducible_def\\|simproc_decl\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
      text)))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
@@ -557,10 +572,13 @@ Return a symbol such as `colon', `coloneq', `by', or
         (lean4-indent--macro-rules-line-p text)
         (string-match-p "\\`[ \t]*#[[:alpha:]_][[:word:]_]*\\_>" text)
         (string-match-p
+         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<grind_pattern\\_>"
+         text)
+        (string-match-p
          "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-*\\[[^]\n]+\\]\\s-+\\)?\\_<attribute\\_>"
          text)
         (string-match-p
-         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
+         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\(?:[:][^ \t\n]+\\)?\\(?:\\s-\\|$\\)"
          text)
         (string-match-p
          "\\`[ \t]*\\(?:\\_<meta\\_>\\s-+\\)?\\_<register_option\\_>"
@@ -581,11 +599,32 @@ wrapped `variable' lines, or nil if TEXT is neither."
   "Return non-nil if TEXT starts a wrapped top-level command header."
   (let ((case-fold-search nil))
     (or (string-match-p
-         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
+         "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\(?:[:][^ \t\n]+\\)?\\(?:\\s-\\|$\\)"
          text)
         (string-match-p
          "\\`[ \t]*\\_<\\(?:syntax\\|macro\\|elab\\)\\_>"
          text))))
+
+(defun lean4-indent--standalone-top-level-wrappable-prefix-p (&optional pos)
+  "Return non-nil if POS is a standalone `local`/`scoped` prefix for a wrapped top-level command."
+  (let* ((pos (or pos (point)))
+         (text (lean4-indent--line-text pos)))
+    (and (string-match-p "\\`[ \t]*\\_<\\(?:local\\|scoped\\)\\_>\\s-*\\'" text)
+         (save-excursion
+           (goto-char pos)
+           (forward-line 1)
+           (let ((next (if (and (not (eobp))
+                                (not (lean4-indent--line-blank-p
+                                      (lean4-indent--line-text (point)))))
+                           (point)
+                         (lean4-indent--next-nonblank))))
+             (and next
+                  (not (lean4-indent--comment-line-p next))
+                  (let ((next-trim (string-trim-left (lean4-indent--line-text next))))
+                    (or (string-prefix-p "notation" next-trim)
+                        (string-prefix-p "infix" next-trim)
+                        (string-prefix-p "prefix" next-trim)
+                        (string-prefix-p "postfix" next-trim)))))))))
 
 (defun lean4-indent--line-structural-top-level-anchor-p (&optional pos)
   "Return non-nil if line at POS is a real top-level anchor."
@@ -593,13 +632,14 @@ wrapped `variable' lines, or nil if TEXT is neither."
     (let ((context (lean4-indent--region-line-context pos)))
       (if (and context (plist-member context :structural-top-level-anchor))
           (plist-get context :structural-top-level-anchor)
-        (and (lean4-indent--line-top-level-anchor-p (lean4-indent--line-text pos))
-             (save-excursion
+        (and (save-excursion
                (goto-char pos)
                (let ((ppss (syntax-ppss (line-beginning-position))))
                  (and (= (car ppss) 0)
                       (not (nth 3 ppss))
-                      (not (nth 4 ppss))))))))))
+                      (not (nth 4 ppss)))))
+             (or (lean4-indent--line-top-level-anchor-p (lean4-indent--line-text pos))
+                 (lean4-indent--standalone-top-level-wrappable-prefix-p pos)))))))
 
 (defun lean4-indent--comment-line-cached-p (&optional pos)
   "Return t if POS is on a comment line, using region cache when available."
@@ -630,20 +670,35 @@ wrapped `variable' lines, or nil if TEXT is neither."
                           (lean4-indent--prev-nonblank)))))))
         found))))
 
-(defun lean4-indent--declaration-inline-body-intro-kind (pos)
-  "Return declaration body-intro kind for line at POS, or nil.
+(defun lean4-indent--declaration-header-body-intro-kind (pos)
+  "Return the declaration header body-intro kind for line at POS, or nil.
 
-This normalizes header lines like `foo := {' to `coloneq' so top-level
-declaration context reflects the real declaration body, not just the trailing
-delimiter."
+This prefers a real outer `:=`-style body intro over a type colon on wrapped
+declaration headers, so lines like `... : T := do` classify as `do` rather
+than `colon`. It also normalizes header lines like `foo := {' to `coloneq' so
+top-level declaration context reflects the real declaration body, not just the
+trailing delimiter."
   (when pos
     (let* ((text (lean4-indent--line-text pos))
-           (kind (lean4-indent--line-body-intro-kind text)))
-      (if (and (lean4-indent--line-has-outer-coloneq-p pos)
-               (or (eq kind 'open-brace)
-                   (lean4-indent--line-ends-with-opening-delimiter-p text)))
-          'coloneq
-        kind))))
+           (has-coloneq (lean4-indent--line-has-outer-coloneq-p pos)))
+      (cond
+       ((and has-coloneq
+             (lean4-indent--line-ends-with-coloneq-by-p text))
+        'coloneq-by)
+       ((and has-coloneq
+             (lean4-indent--line-ends-with-by-p text))
+        'coloneq-by)
+       ((and has-coloneq
+             (lean4-indent--line-ends-with-do-p text))
+        'do)
+       ((and has-coloneq
+             (or (string-match-p "{\\s-*\\(?:--.*\\)?$" text)
+                 (lean4-indent--line-ends-with-opening-delimiter-p text)))
+        'coloneq)
+       (has-coloneq
+        'coloneq)
+       (t
+        (lean4-indent--line-body-intro-kind text))))))
 
 (defun lean4-indent--line-starts-with-paren-p (text)
   (lean4-indent--starts-with-p text lean4-indent--re-starts-paren))
@@ -1153,7 +1208,7 @@ not inside such a declaration."
                             fallback-pos nil)
                       (goto-char (1+ start-pos))))
                   (let ((kind (if (= (point) top)
-                                  (lean4-indent--declaration-inline-body-intro-kind
+                                  (lean4-indent--declaration-header-body-intro-kind
                                    (point))
                                 (lean4-indent--line-body-intro-kind
                                  (lean4-indent--line-text-no-comment (point))))))
@@ -1235,11 +1290,13 @@ not inside such a declaration."
                     current-body-indent (+ (lean4-indent--line-indent pos) step)))
             (when (and current-top-pos (eq current-top-kind 'declaration)
                        (not current-body-intro-final-p))
-              (let ((kind (if (= pos current-top-pos)
-                               (lean4-indent--declaration-inline-body-intro-kind pos)
-                             (lean4-indent--line-body-intro-kind text))))
+              (let ((kind (lean4-indent--declaration-header-body-intro-kind pos)))
                 (cond
                  ((memq kind '(coloneq-by coloneq by where))
+                  (setq current-body-intro-pos (copy-marker pos)
+                        current-body-intro-kind kind
+                        current-body-intro-final-p t))
+                 ((eq kind 'do)
                   (setq current-body-intro-pos (copy-marker pos)
                         current-body-intro-kind kind
                         current-body-intro-final-p t))
@@ -1279,10 +1336,11 @@ not inside such a declaration."
                                  (string-prefix-p "--" trim)
                                  (string-prefix-p "/-" trim)))
                (structural-top-level-anchor
-                (and (lean4-indent--line-top-level-anchor-p text)
-                     (= (car ppss) 0)
+                (and (= (car ppss) 0)
                      (not (nth 3 ppss))
                      (not (nth 4 ppss))
+                     (or (lean4-indent--line-top-level-anchor-p text)
+                         (lean4-indent--standalone-top-level-wrappable-prefix-p pos))
                      (or (= indent 0)
                          (assoc 'mutual block-stack))))
                (significant (and nonblank
@@ -2219,9 +2277,11 @@ lines that will remain unchanged anyway."
                body-indent
                (or (lean4-indent--starts-with-p current-text "\\_<match\\_>")
                    (and (lean4-indent--branch-line-p current-text)
-                        (= prev-indent 0)
-                        (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
-                            (lean4-indent--branch-line-p prev-text))))))
+                        (or (and prev-pos body-intro-pos
+                                 (= prev-pos body-intro-pos))
+                            (and (= prev-indent 0)
+                                 (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
+                                     (lean4-indent--branch-line-p prev-text))))))))
          (zero-indent-top-level-brace-body
           (and (= current 0)
                body-indent
@@ -2232,7 +2292,12 @@ lines that will remain unchanged anyway."
                body-indent
                (memq body-intro-kind '(coloneq coloneq-by))
                (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
-                top-level-context))))
+                top-level-context)))
+         (zero-indent-top-level-where-line
+          (and (= current 0)
+               body-indent
+               (memq body-intro-kind '(coloneq coloneq-by by do))
+               (lean4-indent--starts-with-p current-text "\\_<where\\_>"))))
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
@@ -2249,7 +2314,8 @@ lines that will remain unchanged anyway."
                   (>= current body-indent))
              zero-indent-top-level-match-or-branch
              zero-indent-top-level-brace-body
-             zero-indent-top-level-closing-delimiter))))
+             zero-indent-top-level-closing-delimiter
+             zero-indent-top-level-where-line))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
