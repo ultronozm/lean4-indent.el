@@ -559,6 +559,34 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-termination-by-from-mathlib ()
+  (let ((contents
+         (concat
+          "theorem foo (L : List Nat) : True := by\n"
+          "  trivial\n"
+          "termination_by L.length\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-brace-body-from-mathlib ()
+  (let ((contents
+         (concat
+          "instance (priority := 100) toFoo : Foo :=\n"
+          "{ x := 0\n"
+          "}\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-meta-register-option-from-mathlib ()
+  (let ((contents
+         (concat
+          "meta register_option mathlib.foo : Bool := {\n"
+          "  defValue := false\n"
+          "  descr := \"x\"\n"
+          "}\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-nonrec-and-alias-from-mathlib ()
   (let ((contents
          (concat
@@ -2177,6 +2205,17 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (goto-char (point-min))
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "nonrec theorem foo : True := by"))))
+
+(ert-deftest lean4-indent--top-level-termination-and-register-option-snap-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "  termination_by foo\n"
+       "  meta register_option mathlib.foo : Bool := {\n")
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "termination_by foo"))
+    (forward-line 1)
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "meta register_option mathlib.foo : Bool := {"))))
 
 (lean4-define-final-line-indent-test
  lean4-indent--top-level-attribute-after-open
