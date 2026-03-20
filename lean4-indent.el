@@ -119,6 +119,7 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
     "grind_pattern" "set_option" "open" "universe" "variable"
+    "export" "include"
     "alias" "noncomputable"
     "@[" "scoped["
     "namespace" "section" "public section" "mutual")

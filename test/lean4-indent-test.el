@@ -571,6 +571,37 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-export-from-mathlib ()
+  (let ((contents
+         (concat
+          "class OneMemClass (S M : Type*) where\n"
+          "  one_mem : ∀ s : S, True\n\n"
+          "export OneMemClass (one_mem)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-include-from-mathlib ()
+  (let ((contents
+         (concat
+          "section\n"
+          "variable (hf : True) (hg : True)\n"
+          "include hf hg\n\n"
+          "theorem foo : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-include-in-from-mathlib ()
+  (let ((contents
+         (concat
+          "section\n"
+          "variable (S f : True)\n\n"
+          "include S f in\n"
+          "lemma foo : True := by\n"
+          "  trivial\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-match-from-mathlib ()
   (let ((contents
          (concat
@@ -2238,6 +2269,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "mutual"))
   (should (lean4-indent--line-top-level-anchor-p "alias ⟨foo, _⟩ := bar"))
   (should (lean4-indent--line-top-level-anchor-p "noncomputable"))
+  (should (lean4-indent--line-top-level-anchor-p "export OneMemClass (one_mem)"))
+  (should (lean4-indent--line-top-level-anchor-p "include hf hg"))
+  (should (lean4-indent--line-top-level-anchor-p "include S f in"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p
            "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
