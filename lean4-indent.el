@@ -2269,6 +2269,14 @@ lines that will remain unchanged anyway."
          (step lean4-indent-offset)
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
+         (anchor (and prev-pos
+                      (lean4-indent--find-anchor prev-pos prev-indent)))
+         (anchor-pos (car-safe anchor))
+         (anchor-indent (if anchor (cdr anchor) 0))
+         (anchor-body-intro-kind
+          (and anchor-pos
+               (lean4-indent--line-body-intro-kind
+                (lean4-indent--line-text-no-comment anchor-pos))))
          (top-level-kind (plist-get top-level-context :kind))
          (body-indent (plist-get top-level-context :body-indent))
          (body-intro-pos (plist-get top-level-context :body-intro-pos))
@@ -2372,7 +2380,16 @@ lines that will remain unchanged anyway."
           (and (= current 0)
                body-indent
                (memq body-intro-kind '(coloneq coloneq-by by do))
-               (lean4-indent--starts-with-p current-text "\\_<where\\_>"))))
+               (lean4-indent--starts-with-p current-text "\\_<where\\_>")))
+         (zero-indent-where-field-body-line
+          (and (= current 0)
+               prev-pos
+               anchor-pos
+               (> prev-indent anchor-indent)
+               (eq anchor-body-intro-kind 'where)
+               (memq (lean4-indent--line-body-intro-kind
+                      (lean4-indent--line-text-no-comment prev-pos))
+                     '(coloneq coloneq-by by do)))))
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
@@ -2393,7 +2410,8 @@ lines that will remain unchanged anyway."
              zero-indent-top-level-macro-rules-branch
              zero-indent-top-level-brace-body
              zero-indent-top-level-closing-delimiter
-             zero-indent-top-level-where-line))))
+             zero-indent-top-level-where-line
+             zero-indent-where-field-body-line))))
 
 (defun lean4-indent--stable-region-shallow-top-level-anchor-line-p ()
   "Return non-nil when `indent-region' should preserve a shallow top-level anchor line."

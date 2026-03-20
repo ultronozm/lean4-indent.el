@@ -488,6 +488,18 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-where-field-body-line-from-mathlib ()
+  (let ((contents
+         (concat
+          "instance : ToFormat SimpTheorems where\n"
+          "  format s :=\n"
+          "f!\"pre:\n"
+          "{s.pre.values.toList}\n"
+          "post:\n"
+          "{s.post.values.toList}\"\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-injective-theorem-from-before-file ()
   (let ((contents
          (concat
