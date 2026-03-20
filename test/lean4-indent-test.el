@@ -538,6 +538,39 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-local-notation-from-mathlib ()
+  (let ((contents
+         (concat
+          "namespace Polynomial\n"
+          "variable {ι R S : Type*} [CommRing R] [Ring S] [Algebra R S]\n\n"
+          "local notation \"deg(\"p\")\" => natDegree p\n"
+          "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)\n"
+          "local notation3 \"spanCoeffs(\"p\")\" => 1 ⊔ Submodule.span R coeffs(p)\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-nonrec-and-alias-from-mathlib ()
+  (let ((contents
+         (concat
+          "namespace Metric\n"
+          "variable {α β : Type*}\n\n"
+          "nonrec theorem isUniformEmbedding_iff {f : α → β} : True := by\n"
+          "  trivial\n\n"
+          "alias ⟨foo, _⟩ := isUniformEmbedding_iff\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-noncomputable-from-mathlib ()
+  (let ((contents
+         (concat
+          "class Foo where\n"
+          "  x : Nat\n\n"
+          "noncomputable\n"
+          "def bar : Nat :=\n"
+          "  0\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-match-from-mathlib ()
   (let ((contents
          (concat
@@ -2203,12 +2236,19 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "def foo := 1"))
   (should (lean4-indent--line-top-level-anchor-p "initialize_simps_projections Foo (bar → baz)"))
   (should (lean4-indent--line-top-level-anchor-p "mutual"))
+  (should (lean4-indent--line-top-level-anchor-p "alias ⟨foo, _⟩ := bar"))
+  (should (lean4-indent--line-top-level-anchor-p "noncomputable"))
+  (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
   (should (lean4-indent--line-top-level-anchor-p
            "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
 
 (ert-deftest lean4-indent--top-level-scoped-instance-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "scoped instance foo : True := by"))
   (should (lean4-indent--line-top-level-anchor-p "scoped instance foo : True := by")))
+
+(ert-deftest lean4-indent--top-level-nonrec-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p "nonrec theorem foo : True := by"))
+  (should (lean4-indent--line-top-level-anchor-p "nonrec theorem foo : True := by")))
 
 (ert-deftest lean4-indent--block-comment-recovery ()
   (lean4-test-with-indent-buffer

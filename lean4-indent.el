@@ -119,6 +119,7 @@ current line."
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize_simps_projections"
     "grind_pattern" "set_option" "open" "universe" "variable"
+    "alias" "noncomputable"
     "@[" "scoped["
     "namespace" "section" "public section" "mutual")
   "Non-declaration top-level anchors that snap to column 0 when not nested.")
@@ -492,11 +493,14 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
   (string-match-p
-   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
+   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\|nonrec\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\)\\_>"
    text))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
   (or (lean4-indent--line-top-level-declaration-head-p text)
+      (string-match-p
+       "\\`[ \t]*\\_<local\\_>\\s-+\\_<notation\\(?:[0-9]+\\)?\\_>"
+       text)
       (string-match-p lean4-indent--top-level-anchors-re text)))
 
 (defun lean4-indent--line-top-level-binder-head-kind (text)
