@@ -533,6 +533,34 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-proof-wanted-from-mathlib ()
+  (let ((contents
+         (concat
+          "/-- doc -/\n"
+          "proof_wanted angle_eq_angle_add_angle_iff {x y z : V} (hy : y ≠ 0) :\n"
+          "    angle x z = angle x y + angle y z ↔ True\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-irreducible-def-from-mathlib ()
+  (let ((contents
+         (concat
+          "/-- doc -/\n"
+          "irreducible_def oneTangentSpaceIcc {x y : ℝ} [h : Fact (x < y)] (z : Icc x y) :\n"
+          "    TangentSpace (𝓡∂ 1) z :=\n"
+          "  foo\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-top-level-alias-rhs-from-mathlib ()
+  (let ((contents
+         (concat
+          "@[deprecated (since := \"2025-06-12\")]\n"
+          "alias _root_.Diffeomorph.contMDiffWithinAt_transDiffeomorph_right :=\n"
+          "contMDiffWithinAt_transContinuousLinearEquiv_right\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-mutual-from-mathlib ()
   (let ((contents
          (concat
@@ -620,6 +648,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
          (concat
           "lemma normal_iff_forall_fieldRange_eq : Normal F K ↔ ∀ σ : K →ₐ[F] L, σ.fieldRange = K :=\n"
           "⟨@AlgHom.fieldRange_of_normal (E := K), normal_iff_forall_fieldRange_le.2 ∘ fun h σ ↦ (h σ).le⟩\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-flush-left-wrapped-variable-block-from-mathlib ()
+  (let ((contents
+         (concat
+          "section Div\n\n"
+          "variable {𝕜 : Type*} [NontriviallyNormedField 𝕜] {n : WithTop ℕ∞}\n"
+          "{H : Type*} [TopologicalSpace H] {E : Type*}\n"
+          "  [NormedAddCommGroup E] [NormedSpace 𝕜 E] {I : ModelWithCorners 𝕜 E H} {G : Type*}\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -759,6 +797,15 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
           "  -- comment\n"
           "  Meta.withLocalInstances (← getLCtx).decls.toList.reduceOption do\n"
           "  guard True\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
+(ert-deftest lean4-indent--indent-region-preserves-indented-set-option-in-proof-body-from-mathlib ()
+  (let ((contents
+         (concat
+          "theorem foo : True := by\n"
+          "  set_option push_neg.use_distrib true in\n"
+          "  contrapose!; trivial\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2293,6 +2340,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (concat
        "  initialize_simps_projections Foo (bar → baz)\n"
        "  grind_pattern Foo.bar => True\n"
+       "  irreducible_def foo : True := by\n"
+       "  proof_wanted foo : True\n"
        "  export OneMemClass (one_mem)\n"
        "  include hf hg\n"
        "  include S f in\n"
@@ -2302,6 +2351,8 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
        "  noncomputable\n")
     (dolist (expected '("initialize_simps_projections Foo (bar → baz)"
                         "grind_pattern Foo.bar => True"
+                        "irreducible_def foo : True := by"
+                        "proof_wanted foo : True"
                         "export OneMemClass (one_mem)"
                         "include hf hg"
                         "include S f in"
@@ -2531,6 +2582,8 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "mutual"))
   (should (lean4-indent--line-top-level-anchor-p "alias ⟨foo, _⟩ := bar"))
   (should (lean4-indent--line-top-level-anchor-p "noncomputable"))
+  (should (lean4-indent--line-top-level-anchor-p "irreducible_def foo : True := by"))
+  (should (lean4-indent--line-top-level-anchor-p "proof_wanted foo : True"))
   (should (lean4-indent--line-top-level-anchor-p "export OneMemClass (one_mem)"))
   (should (lean4-indent--line-top-level-anchor-p "include hf hg"))
   (should (lean4-indent--line-top-level-anchor-p "include S f in"))

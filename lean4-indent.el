@@ -118,7 +118,7 @@ current line."
 
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
-    "grind_pattern" "set_option" "open" "universe" "variable"
+    "grind_pattern" "irreducible_def" "proof_wanted" "set_option" "open" "universe" "variable"
     "export" "include" "omit" "partial"
     "private" "public" "protected" "unsafe" "meta"
     "termination_by" "decreasing_by"
@@ -1145,9 +1145,13 @@ not inside such a declaration."
                   (aref lean4-indent--region-top-level-contexts index))))
       (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
         (when top
-          (let ((body-intro
-                 (lean4-indent--top-level-declaration-body-intro-from top start-pos)))
+          (let* ((top-text (lean4-indent--line-text top))
+                 (top-kind (lean4-indent--line-top-level-binder-head-kind top-text))
+                 (body-intro
+                  (and (eq top-kind 'declaration)
+                       (lean4-indent--top-level-declaration-body-intro-from top start-pos))))
             (list :pos top
+                  :kind top-kind
                   :body-indent (+ (lean4-indent--line-indent top) step)
                   :body-intro-pos (plist-get body-intro :pos)
                   :body-intro-kind (plist-get body-intro :kind)))))))
@@ -1173,7 +1177,7 @@ not inside such a declaration."
     (let* ((line-count (line-number-at-pos (point-max) t))
            (contexts (make-vector (max 1 line-count) nil))
            (current-top-pos nil)
-           (current-top-is-decl nil)
+           (current-top-kind nil)
            (current-body-intro-pos nil)
            (current-body-intro-kind nil)
            (current-body-intro-final-p nil)
@@ -1185,12 +1189,12 @@ not inside such a declaration."
                       (lean4-indent--comment-line-cached-p pos))
             (when (lean4-indent--line-structural-top-level-anchor-p pos)
               (setq current-top-pos (copy-marker pos)
-                    current-top-is-decl (lean4-indent--line-top-level-declaration-head-p text)
+                    current-top-kind (lean4-indent--line-top-level-binder-head-kind text)
                     current-body-intro-pos nil
                     current-body-intro-kind nil
                     current-body-intro-final-p nil
                     current-body-indent (+ (lean4-indent--line-indent pos) step)))
-            (when (and current-top-pos current-top-is-decl
+            (when (and current-top-pos (eq current-top-kind 'declaration)
                        (not current-body-intro-final-p))
               (let ((kind (if (= pos current-top-pos)
                                (lean4-indent--declaration-inline-body-intro-kind pos)
@@ -1207,6 +1211,7 @@ not inside such a declaration."
                 (1- (line-number-at-pos pos t))
                 (and current-top-pos
                      (list :pos current-top-pos
+                           :kind current-top-kind
                            :body-indent current-body-indent
                            :body-intro-pos current-body-intro-pos
                            :body-intro-kind current-body-intro-kind))))
@@ -1226,6 +1231,7 @@ not inside such a declaration."
         (let* ((pos (point))
                (text (lean4-indent--line-text pos))
                (nonblank (not (lean4-indent--line-blank-p text)))
+               (indent (and nonblank (lean4-indent--line-indent pos)))
                (trim (string-trim-left text))
                (ppss (syntax-ppss pos))
                (string-line (nth 3 ppss))
@@ -1236,10 +1242,11 @@ not inside such a declaration."
                 (and (lean4-indent--line-top-level-anchor-p text)
                      (= (car ppss) 0)
                      (not (nth 3 ppss))
-                     (not (nth 4 ppss))))
+                     (not (nth 4 ppss))
+                     (or (= indent 0)
+                         (assoc 'mutual block-stack))))
                (significant (and nonblank
-                                 (not comment-line)))
-               (indent (and nonblank (lean4-indent--line-indent pos))))
+                                 (not comment-line))))
           (when nonblank
             (while (and indent-stack
                         (>= (cdar indent-stack) indent))
@@ -2113,9 +2120,20 @@ lines that will remain unchanged anyway."
          (step lean4-indent-offset)
          (top-level-context (and prev-pos
                                  (lean4-indent--top-level-context prev-pos step)))
+         (top-level-kind (plist-get top-level-context :kind))
          (body-indent (plist-get top-level-context :body-indent))
          (body-intro-pos (plist-get top-level-context :body-intro-pos))
          (body-intro-kind (plist-get top-level-context :body-intro-kind))
+         (top-level-variable-continuation
+          (and (eq top-level-kind 'variable)
+               body-indent
+               (<= current body-indent)))
+         (top-level-anchor-continuation
+          (and prev-pos
+               (lean4-indent--line-structural-top-level-anchor-p prev-pos)
+               (memq (lean4-indent--line-body-intro-kind prev-text)
+                     '(coloneq coloneq-by by where))
+               (<= current (+ prev-indent step))))
          (shallow-first-top-level-body-line
           (and (> current 0)
                body-indent
@@ -2152,7 +2170,9 @@ lines that will remain unchanged anyway."
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
-         (or shallow-first-top-level-body-line
+         (or top-level-anchor-continuation
+             top-level-variable-continuation
+             shallow-first-top-level-body-line
              zero-indent-first-top-level-delimited-body-line
              (and (> current 0)
                   body-indent
