@@ -599,7 +599,17 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
             (concat
              "elab (name := deprecated_modules)\n"
              "    \"deprecated_module foo\" : command => do\n"
-             "  pure ()\n")))
+             "  pure ()\n")
+            (concat
+             "macro \"#import_bumps\" : command => `(\n"
+             "  run_cmd logInfo \"Counting imports from here.\"\n"
+             "  set_option Elab.async false\n"
+             "  set_option linter.minImports true)\n")
+            (concat
+             "public register_option linter.privateModule : Bool := {\n"
+             "  defValue := false\n"
+             "  descr := \"x\"\n"
+             "}\n")))
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
@@ -2238,10 +2248,12 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
       (concat
        "  initialize addLinter commandRangesLinter\n"
        "  partial\n"
-       "  elab (name := deprecated_modules)\n")
+       "  elab (name := deprecated_modules)\n"
+       "  public register_option linter.privateModule : Bool := {\n")
     (dolist (expected '("initialize addLinter commandRangesLinter"
                         "partial"
-                        "elab (name := deprecated_modules)"))
+                        "elab (name := deprecated_modules)"
+                        "public register_option linter.privateModule : Bool := {"))
       (funcall indent-line-function)
       (should (equal (lean4-test--line-string) expected))
       (forward-line 1))))
@@ -2399,6 +2411,12 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
 (ert-deftest lean4-indent--top-level-scoped-instance-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "scoped instance foo : True := by"))
   (should (lean4-indent--line-top-level-anchor-p "scoped instance foo : True := by")))
+
+(ert-deftest lean4-indent--top-level-public-register-option-is-declaration-head ()
+  (should (lean4-indent--line-top-level-declaration-head-p
+           "public register_option linter.privateModule : Bool := {"))
+  (should (lean4-indent--line-top-level-anchor-p
+           "public register_option linter.privateModule : Bool := {")))
 
 (ert-deftest lean4-indent--top-level-nonrec-is-declaration-head ()
   (should (lean4-indent--line-top-level-declaration-head-p "nonrec theorem foo : True := by"))

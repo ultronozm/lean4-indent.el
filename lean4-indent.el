@@ -436,7 +436,7 @@ current line."
             (when (and (< indent limit-indent)
                        (string-match-p lean4-indent--re-have-suffices text))
               (throw 'found t))
-            (when (lean4-indent--line-top-level-anchor-p text)
+            (when (lean4-indent--line-structural-top-level-anchor-p (point))
               (throw 'found nil)))))
       nil)))
 
@@ -495,7 +495,7 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-declaration-head-p (text)
   "Return non-nil if TEXT starts a top-level declaration header."
   (string-match-p
-   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
+   "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-+\\)?\\(?:\\_<\\(?:protected\\|private\\|public\\|noncomputable\\|unsafe\\|partial\\|nonrec\\|meta\\)\\_>\\s-+\\)*\\_<\\(?:def\\|instance\\|partial_fixpoint\\|theorem\\|lemma\\|example\\|structure\\|inductive\\|class\\|abbrev\\|macro\\|syntax\\|notation\\|elab\\|register_option\\)\\_>"
    text))
 
 (defun lean4-indent--line-top-level-anchor-p (text)
@@ -517,6 +517,17 @@ wrapped `variable' lines, or nil if TEXT is neither."
    ((lean4-indent--line-top-level-declaration-head-p text) 'declaration)
    ((string-match-p "\\`[ \t]*\\_<variable\\_>" text) 'variable)
    (t nil)))
+
+(defun lean4-indent--line-structural-top-level-anchor-p (&optional pos)
+  "Return non-nil if line at POS is a real top-level anchor."
+  (let ((pos (or pos (point))))
+    (and (lean4-indent--line-top-level-anchor-p (lean4-indent--line-text pos))
+         (save-excursion
+           (goto-char pos)
+           (let ((ppss (syntax-ppss (line-beginning-position))))
+             (and (= (car ppss) 0)
+                  (not (nth 3 ppss))
+                  (not (nth 4 ppss))))))))
 
 (defun lean4-indent--declaration-inline-body-intro-kind (pos)
   "Return declaration body-intro kind for line at POS, or nil.
@@ -638,7 +649,7 @@ tail."
                 (lean4-indent--comment-line-p (point))))
            (t
             (setq done t)
-            (setq found (lean4-indent--line-top-level-anchor-p text))))))
+            (setq found (lean4-indent--line-structural-top-level-anchor-p (point)))))))
       found)))
 
 (defun lean4-indent--next-significant-noncomment-line-top-level-anchor-p ()
@@ -654,7 +665,7 @@ tail."
            ((lean4-indent--comment-line-p (point)))
            (t
             (setq done t)
-            (setq found (lean4-indent--line-top-level-anchor-p text))))))
+            (setq found (lean4-indent--line-structural-top-level-anchor-p (point)))))))
       found)))
 
 (defun lean4-indent--branch-line-p (text)
@@ -1007,7 +1018,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
         (forward-line -1)
         (let ((text (lean4-indent--line-text (point))))
           (unless (lean4-indent--comment-line-p (point))
-            (when (lean4-indent--line-top-level-anchor-p text)
+            (when (lean4-indent--line-structural-top-level-anchor-p (point))
               (setq found (point))))))
       found)))
 
@@ -1035,7 +1046,7 @@ not inside such a declaration."
                 (unless (or (lean4-indent--line-blank-p text)
                             (lean4-indent--comment-line-p (point)))
                   (when (> (point) top)
-                    (when (lean4-indent--line-top-level-anchor-p text)
+                    (when (lean4-indent--line-structural-top-level-anchor-p (point))
                       (setq fallback-kind nil
                             fallback-pos nil)
                       (goto-char (1+ start-pos))))
@@ -1109,7 +1120,7 @@ not inside such a declaration."
                (text (lean4-indent--line-text pos)))
           (unless (or (lean4-indent--line-blank-p text)
                       (lean4-indent--comment-line-p pos))
-            (when (lean4-indent--line-top-level-anchor-p text)
+            (when (lean4-indent--line-structural-top-level-anchor-p pos)
               (setq current-top-pos (copy-marker pos)
                     current-top-is-decl (lean4-indent--line-top-level-declaration-head-p text)
                     current-body-intro-pos nil
@@ -1420,7 +1431,7 @@ not inside such a declaration."
                (not (eq top-level-body-intro-kind 'coloneq-by))
                (not (eq anchor-body-intro-kind 'where))
                (or (and anchor-pos
-                        (lean4-indent--line-top-level-anchor-p anchor-text)
+                        (lean4-indent--line-structural-top-level-anchor-p anchor-pos)
                         (+ anchor-indent step))
                    prev-top-level-body-indent))))
     (cond
@@ -1460,10 +1471,10 @@ not inside such a declaration."
            (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-mutual))
       (+ prev-indent step))
      ;; 2.5) Top-level anchors inside mutual indent one step.
-     ((and mutual-indent (lean4-indent--line-top-level-anchor-p current-text))
+     ((and mutual-indent (lean4-indent--line-structural-top-level-anchor-p (point)))
       (+ mutual-indent step))
      ;; 3) Top-level snap
-     ((lean4-indent--line-top-level-anchor-p current-text)
+     ((lean4-indent--line-structural-top-level-anchor-p (point))
       0)
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
@@ -1920,7 +1931,7 @@ not inside such a declaration."
      ;; 11.8) Blank lines after a first-level non-tactic declaration body snap back.
      ((and (lean4-indent--line-blank-p current-text)
            anchor-pos
-           (lean4-indent--line-top-level-anchor-p anchor-text)
+           (lean4-indent--line-structural-top-level-anchor-p anchor-pos)
            (eq anchor-body-intro-kind 'coloneq)
            (= prev-indent (+ anchor-indent step))
            (not prev-line-ends-with-op)
@@ -1954,7 +1965,7 @@ Outside tactic blocks this returns nil."
          (current-trim (string-trim current-text))
          (current-tactic-body-line-p
           (and (not (string-empty-p current-trim))
-               (not (lean4-indent--line-top-level-anchor-p current-text))))
+               (not (lean4-indent--line-structural-top-level-anchor-p (point)))))
          (prev-pos (lean4-indent--prev-nonblank))
          (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
          (step lean4-indent-offset)
@@ -1992,7 +2003,7 @@ Outside tactic blocks this returns nil."
     (and lean4-indent--preserve-tactic-region-indentation
          (> current 0)
          (not (lean4-indent--line-blank-p current-text))
-         (not (lean4-indent--line-top-level-anchor-p current-text))
+         (not (lean4-indent--line-structural-top-level-anchor-p (point)))
          body-indent
          (>= current body-indent))))
 
@@ -2027,7 +2038,7 @@ lines that will remain unchanged anyway."
                (string-match-p "\\`[ \t]*[{}]" current-text))))
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
-         (not (lean4-indent--line-top-level-anchor-p current-text))
+         (not (lean4-indent--line-structural-top-level-anchor-p (point)))
          (or (and (> current 0)
                   body-indent
                   (>= current body-indent))
@@ -2076,8 +2087,8 @@ repeated whole-declaration rescans near the end of large files."
         (unless (or (looking-at-p "[ \t]*$")
                     (lean4-indent--comment-line-p (point))
                     (and (= (current-indentation) 0)
-                         (lean4-indent--line-top-level-anchor-p
-                          (lean4-indent--line-text (point))))
+                         (lean4-indent--line-structural-top-level-anchor-p
+                          (point)))
                     (lean4-indent--stable-region-body-line-p))
           (funcall indent-line-function))
         (forward-line 1)))))
