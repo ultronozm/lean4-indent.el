@@ -121,6 +121,7 @@ current line."
     "grind_pattern" "set_option" "open" "universe" "variable"
     "export" "include" "partial"
     "termination_by" "decreasing_by"
+    "#check" "#eval" "#guard_msgs"
     "alias" "noncomputable"
     "@[" "scoped["
     "namespace" "section" "public section" "mutual")
