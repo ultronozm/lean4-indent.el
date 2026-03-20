@@ -899,6 +899,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-brace-closing-line-after-decreasing-by ()
+  (let ((contents
+         (concat
+          "decreasing_by all_goals {\n"
+          "  subst_vars\n"
+          "  pgame_wf_tac\n"
+          "}\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-closing-bracket-from-mathlib ()
   (let ((contents
          (concat

@@ -1714,7 +1714,7 @@ not inside such a declaration."
       (lean4-indent--line-indent top-level-pos))
      ;; 3.3) Zero-indent closing delimiters in top-level declaration bodies stay at declaration column.
      ((and top-level-context
-           (memq top-level-body-intro-kind '(coloneq coloneq-by))
+           (memq top-level-body-intro-kind '(coloneq coloneq-by open-brace))
            (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
             top-level-context))
       (lean4-indent--line-indent top-level-pos))
@@ -2365,7 +2365,7 @@ lines that will remain unchanged anyway."
          (zero-indent-top-level-closing-delimiter
           (and (= current 0)
                body-indent
-               (memq body-intro-kind '(coloneq coloneq-by))
+               (memq body-intro-kind '(coloneq coloneq-by open-brace))
                (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
                 top-level-context)))
          (zero-indent-top-level-where-line
