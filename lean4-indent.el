@@ -606,6 +606,9 @@ wrapped `variable' lines, or nil if TEXT is neither."
          "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\(?:[:][^ \t\n]+\\)?\\(?:\\s-\\|$\\)"
          text)
         (string-match-p
+         "\\`[ \t]*\\_<open\\_>"
+         text)
+        (string-match-p
          "\\`[ \t]*\\_<deriving\\_>\\s-+\\_<instance\\_>"
          text)
         (string-match-p

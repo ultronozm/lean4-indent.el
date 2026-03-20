@@ -581,6 +581,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-wrapped-open-from-mathlib ()
+  (let ((contents
+         (concat
+          "open TopologicalSpace Set MeasureTheory intervalIntegral\n"
+          " Metric Filter Function Complex\n"
+          "\n"
+          "open UpperHalfPlane hiding I\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-local-macro-rules-from-mathlib ()
   (let ((contents
          (concat
