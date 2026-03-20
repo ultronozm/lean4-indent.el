@@ -488,6 +488,24 @@ current line."
 (defun lean4-indent--line-ends-with-comma-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-comma))
 
+(defun lean4-indent--line-ends-with-opening-delimiter-p (text)
+  "Return non-nil if TEXT ends with an opening delimiter, allowing a line comment."
+  (string-match-p "[][({⟨]\\s-*\\(?:--.*\\)?$" text))
+
+(defun lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p (top-level-context)
+  "Return non-nil if the current closing delimiter closes the outer top-level body.
+
+TOP-LEVEL-CONTEXT is the enclosing declaration context returned by
+`lean4-indent--top-level-context'."
+  (and top-level-context
+       (lean4-indent--line-starts-with-closing-p (lean4-indent--line-text (point)))
+       (let ((open (lean4-indent--open-paren-pos (point))))
+         (and open
+              (= (save-excursion
+                   (goto-char open)
+                   (current-indentation))
+                 (lean4-indent--line-indent (plist-get top-level-context :pos)))))))
+
 (defun lean4-indent--line-body-intro-kind (text)
   "Classify how TEXT introduces a following indented body.
 
@@ -578,8 +596,9 @@ delimiter."
   (when pos
     (let* ((text (lean4-indent--line-text pos))
            (kind (lean4-indent--line-body-intro-kind text)))
-      (if (and (eq kind 'open-brace)
-               (lean4-indent--line-has-outer-coloneq-p pos))
+      (if (and (lean4-indent--line-has-outer-coloneq-p pos)
+               (or (eq kind 'open-brace)
+                   (lean4-indent--line-ends-with-opening-delimiter-p text)))
           'coloneq
         kind))))
 
@@ -1539,6 +1558,12 @@ not inside such a declaration."
      ((and (lean4-indent--starts-with-p current-text "\\_<deriving\\_>")
            top-level-context)
       (lean4-indent--line-indent (plist-get top-level-context :pos)))
+     ;; 3.3) Zero-indent closing delimiters in top-level declaration bodies stay at declaration column.
+     ((and top-level-context
+           (memq top-level-body-intro-kind '(coloneq coloneq-by))
+           (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
+            top-level-context))
+      (lean4-indent--line-indent (plist-get top-level-context :pos)))
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
@@ -2098,7 +2123,13 @@ lines that will remain unchanged anyway."
           (and (= current 0)
                body-indent
                (memq body-intro-kind '(coloneq coloneq-by))
-               (string-match-p "\\`[ \t]*[{}]" current-text))))
+               (string-match-p "\\`[ \t]*[{}]" current-text)))
+         (zero-indent-top-level-closing-delimiter
+          (and (= current 0)
+               body-indent
+               (memq body-intro-kind '(coloneq coloneq-by))
+               (lean4-indent--current-closing-delimiter-belongs-to-top-level-body-p
+                top-level-context))))
     (and lean4-indent--preserve-tactic-region-indentation
          (not (lean4-indent--line-blank-p current-text))
          (not (lean4-indent--line-structural-top-level-anchor-p (point)))
@@ -2106,7 +2137,8 @@ lines that will remain unchanged anyway."
                   body-indent
                   (>= current body-indent))
              zero-indent-top-level-match-or-branch
-             zero-indent-top-level-brace-body))))
+             zero-indent-top-level-brace-body
+             zero-indent-top-level-closing-delimiter))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
