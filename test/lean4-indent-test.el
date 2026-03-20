@@ -580,6 +580,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-add-aesop-rules-from-mathlib ()
+  (let ((contents
+         (concat
+          "add_aesop_rules safe tactic\n"
+          "  (rule_sets := [Measurable])\n"
+          "  (index := [target @AEStronglyMeasurable ..])\n"
+          "  (by fun_prop (disch := measurability))\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-branches-from-mathlib ()
   (let ((contents
          (concat
@@ -2788,10 +2798,12 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
   (lean4-test-with-indent-buffer
       (concat
        "  initialize addLinter commandRangesLinter\n"
+       "  add_aesop_rules safe tactic\n"
        "  partial\n"
        "  elab (name := deprecated_modules)\n"
        "  public register_option linter.privateModule : Bool := {\n")
     (dolist (expected '("initialize addLinter commandRangesLinter"
+                        "add_aesop_rules safe tactic"
                         "partial"
                         "elab (name := deprecated_modules)"
                         "public register_option linter.privateModule : Bool := {"))

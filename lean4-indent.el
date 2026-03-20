@@ -118,6 +118,7 @@ current line."
 
 (defconst lean4-indent--top-level-anchors
   '("attribute" "add_decl_doc" "compile_inductive" "initialize" "initialize_simps_projections"
+    "add_aesop_rules"
     "grind_pattern" "irreducible_def" "proof_wanted" "set_option" "open" "universe" "variable"
     "extend_docs"
     "run_cmd"
