@@ -549,6 +549,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-top-level-scoped-infix-from-mathlib ()
+  (let ((contents
+         (concat
+          "namespace Computation\n\n"
+          "def Promises (s : Nat) (a : Nat) : Prop :=\n"
+          "  True\n\n"
+          "scoped infixl:50 \" ~> \" => Promises\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-nonrec-and-alias-from-mathlib ()
   (let ((contents
          (concat
@@ -2273,6 +2283,8 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
   (should (lean4-indent--line-top-level-anchor-p "include hf hg"))
   (should (lean4-indent--line-top-level-anchor-p "include S f in"))
   (should (lean4-indent--line-top-level-anchor-p "local notation3 \"coeffs(\"p\")\" => Set.range (coeff p)"))
+  (should (lean4-indent--line-top-level-anchor-p "scoped infixl:50 \" ~> \" => Promises"))
+  (should (lean4-indent--line-top-level-anchor-p "prefix:100 \"foo\" => bar"))
   (should (lean4-indent--line-top-level-anchor-p
            "grind_pattern IsStrictlyPositive.spectrum_pos => x ∈ spectrum 𝕜 a, IsStrictlyPositive a")))
 

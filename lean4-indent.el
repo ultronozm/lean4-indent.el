@@ -500,7 +500,7 @@ Return a symbol such as `colon', `coloneq', `by', or
 (defun lean4-indent--line-top-level-anchor-p (text)
   (or (lean4-indent--line-top-level-declaration-head-p text)
       (string-match-p
-       "\\`[ \t]*\\_<local\\_>\\s-+\\_<notation\\(?:[0-9]+\\)?\\_>"
+       "\\`[ \t]*\\(?:\\_<\\(?:local\\|scoped\\)\\_>\\s-+\\)?\\_<\\(?:notation\\(?:[0-9]+\\)?\\|infixl?\\|infixr\\|prefix\\|postfix\\)\\_>"
        text)
       (string-match-p lean4-indent--top-level-anchors-re text)))
 
