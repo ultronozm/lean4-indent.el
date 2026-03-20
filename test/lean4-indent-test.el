@@ -590,6 +590,16 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (lean4-test-with-indent-buffer contents
       (lean4-test--indent-region-and-assert-same))))
 
+(ert-deftest lean4-indent--indent-region-preserves-zero-indent-top-level-equation-branches-from-mathlib ()
+  (let ((contents
+         (concat
+          "meta def elabDeprecatedCross : TermElab\n"
+          "| `($x ×₃%$tk $y) => fun ty? => do\n"
+          "  logWarningAt tk <| m!\"deprecated\"\n"
+          "| _ => fun _ => throwUnsupportedSyntax\n")))
+    (lean4-test-with-indent-buffer contents
+      (lean4-test--indent-region-and-assert-same))))
+
 (ert-deftest lean4-indent--indent-region-preserves-top-level-prefix-arg-from-mathlib ()
   (let ((contents
          (concat
@@ -2732,6 +2742,15 @@ protected def pointwiseMulAction : MulAction R' (Subalgebra R A) where
     (forward-line 2)
     (funcall indent-line-function)
     (should (equal (lean4-test--line-string) "for PontryaginDual A"))))
+
+(ert-deftest lean4-indent--top-level-equation-branch-snaps-left ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "meta def foo : Nat → Nat\n"
+       "  | n => n\n")
+    (forward-line 1)
+    (funcall indent-line-function)
+    (should (equal (lean4-test--line-string) "| n => n"))))
 
 (ert-deftest lean4-indent--top-level-hash-commands-snap-left ()
   (lean4-test-with-indent-buffer

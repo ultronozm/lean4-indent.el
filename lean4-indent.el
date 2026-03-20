@@ -1664,10 +1664,17 @@ not inside such a declaration."
       prev-indent)
      ;; 2) Branch lines
      (starts-with-branch
-      (let* ((with-indent (and prev-pos (lean4-indent--find-with-indent
+     (let* ((with-indent (and prev-pos (lean4-indent--find-with-indent
                                          prev-pos
                                          (or anchor2-indent anchor-indent prev-indent)))))
-        (cond
+       (cond
+         ((and top-level-pos
+               (eq top-level-kind 'declaration)
+               top-level-body-intro-pos
+               (lean4-indent--branch-line-p
+                (lean4-indent--line-text top-level-body-intro-pos))
+               (> prev-indent (lean4-indent--line-indent top-level-pos)))
+          (lean4-indent--line-indent top-level-pos))
          ((and prev-pos (lean4-indent--macro-rules-line-p prev-text))
           (+ prev-indent step))
          ((and prev-noncomment (lean4-indent--macro-rules-line-p prev-noncomment-text))
@@ -1709,6 +1716,12 @@ not inside such a declaration."
      ;; 3.5) `where` aligns with its declaration anchor.
      ((and (lean4-indent--starts-with-p current-text lean4-indent--re-starts-where) anchor-pos)
       anchor-indent)
+     ;; 3.6) Equation-compiler branches of a top-level declaration align with the declaration head.
+     ((and top-level-pos
+           (eq top-level-kind 'declaration)
+           (not top-level-body-intro-pos)
+           starts-with-branch)
+      (lean4-indent--line-indent top-level-pos))
      ;; Continuation of wrapped top-level declaration/variable binders.
      ((and prev-pos
            (lean4-indent--line-top-level-binder-head-kind prev-text)
@@ -2326,6 +2339,13 @@ lines that will remain unchanged anyway."
                             (and (= prev-indent 0)
                                  (or (lean4-indent--starts-with-p prev-text "\\_<match\\_>")
                                      (lean4-indent--branch-line-p prev-text))))))))
+         (zero-indent-top-level-equation-branch
+          (and (= current 0)
+               (eq top-level-kind 'declaration)
+               (lean4-indent--branch-line-p current-text)
+               (or (not body-intro-pos)
+                   (lean4-indent--branch-line-p
+                    (lean4-indent--line-text body-intro-pos)))))
          (zero-indent-top-level-brace-body
           (and (= current 0)
                body-indent
@@ -2358,6 +2378,7 @@ lines that will remain unchanged anyway."
                   body-indent
                   (>= current body-indent))
              zero-indent-top-level-match-or-branch
+             zero-indent-top-level-equation-branch
              zero-indent-top-level-brace-body
              zero-indent-top-level-closing-delimiter
              zero-indent-top-level-where-line))))
