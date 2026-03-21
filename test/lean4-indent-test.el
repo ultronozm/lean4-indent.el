@@ -70,6 +70,20 @@ following line in the test fixture."
     (lean4-test--newline-and-indent)
     (should (>= (current-indentation) expected))))
 
+(defun lean4-test--newline-bounds-and-assert (min-indent max-indent)
+  "Run `newline-and-indent' and assert the new line stays within bounds."
+  (lean4-test--newline-and-indent)
+  (should (>= (current-indentation) min-indent))
+  (should (<= (current-indentation) max-indent)))
+
+(defun lean4-test--newline-next-line-bounds-and-assert (max-indent)
+  "Use the original next line as a lower bound and MAX-INDENT as an upper bound."
+  (let ((min-indent
+         (save-excursion
+           (forward-line 1)
+           (current-indentation))))
+    (lean4-test--newline-bounds-and-assert min-indent max-indent)))
+
 (defun lean4-test--open-line-below ()
   "Insert a newline below point without indenting it first."
   (end-of-line)
@@ -3789,7 +3803,46 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 5)
     (end-of-line)
-    (lean4-test--newline-and-assert "          ")))
+    (lean4-test--newline-next-line-bounds-and-assert 10)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-binder-line-does-not-overindent-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sumCasesOn {f : α → β ⊕ γ} {g : α → β → σ} {h : α → γ → σ} (hf : Computable f)\n"
+       "    (hg : Computable₂ g) (hh : Computable₂ h) :\n"
+       "    @Computable _ σ _ _ fun a => Sum.casesOn (f a) (g a) (h a) :=\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-coloneq-line-does-not-overindent-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sumCasesOn {f : α → β ⊕ γ} {g : α → β → σ} {h : α → γ → σ} (hf : Computable f)\n"
+       "    (hg : Computable₂ g) (hh : Computable₂ h) :\n"
+       "    @Computable _ σ _ _ fun a => Sum.casesOn (f a) (g a) (h a) :=\n"
+       "  option_some_iff.1 <|\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
+(ert-deftest lean4-indent--newline-after-closed-projection-tail-does-not-overindent-next-arg ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sumCasesOn {f : α → β ⊕ γ} {g : α → β → σ} {h : α → γ → σ} (hf : Computable f)\n"
+       "    (hg : Computable₂ g) (hh : Computable₂ h) :\n"
+       "    @Computable _ σ _ _ fun a => Sum.casesOn (f a) (g a) (h a) :=\n"
+       "  option_some_iff.1 <|\n"
+       "    (cond (nat_bodd.comp <| encode_iff.2 hf)\n"
+       "          (option_map (Computable.decode.comp <| nat_div2.comp <| encode_iff.2 hf) hh)\n"
+       "          (option_map (Computable.decode.comp <| nat_div2.comp <| encode_iff.2 hf) hg)).of_eq\n"
+       "      fun a => by\n")
+    (goto-char (point-min))
+    (forward-line 6)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
 
 (ert-deftest lean4-indent--newline-after-comma-led-list-item-keeps-wrapped-argument-indent ()
   (lean4-test-with-indent-buffer
@@ -3807,7 +3860,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 7)
     (end-of-line)
-    (lean4-test--newline-lower-bound-and-assert)))
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
 
 (ert-deftest lean4-indent--newline-after-tfae-have-inline-application-keeps-going ()
   (lean4-test-with-indent-buffer
@@ -3818,7 +3871,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 1)
     (end-of-line)
-    (lean4-test--newline-lower-bound-and-assert)))
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
 
 (ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
   (lean4-test-with-indent-buffer

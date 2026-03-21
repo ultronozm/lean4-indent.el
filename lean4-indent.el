@@ -913,11 +913,37 @@ tail."
            trim)
       (lean4-indent--line-application-head-kind (match-string 1 trim)))))
 
-(defun lean4-indent--pipe-left-tail-head-kind (text)
-  "Classify the term tail following `<|' in TEXT, or return nil."
-  (let ((trim (string-trim-left text)))
-    (when (string-match "<|\\s-*\\(.+\\)\\'" trim)
-      (lean4-indent--line-application-head-kind (match-string 1 trim)))))
+(defun lean4-indent--pipe-left-tail-head-kind (text &optional _pos)
+  "Classify the outer `<|` tail in TEXT, or return nil.
+
+Only a `<|` at delimiter depth 0 counts. This avoids treating inner
+`<|` applications inside a completed parenthesized term as if they
+were the live continuation for a following blank line."
+  (let ((depth 0)
+        (in-string nil)
+        (idx 0)
+        (len (length text))
+        found)
+    (while (and (< idx len) (not found))
+      (let ((ch (aref text idx)))
+        (cond
+         ((eq ch ?\")
+          (setq in-string (not in-string)))
+         (in-string nil)
+         ((memq ch '(?\( ?\[ ?\{ ?⟨))
+          (setq depth (1+ depth)))
+         ((and (> depth 0)
+               (memq ch '(?\) ?\] ?\} ?⟩)))
+          (setq depth (1- depth)))
+         ((and (= depth 0)
+               (= ch ?<)
+               (< (1+ idx) len)
+               (= (aref text (1+ idx)) ?|))
+          (setq found
+                (lean4-indent--line-application-head-kind
+                 (substring text (+ idx 2)))))))
+      (setq idx (1+ idx)))
+    found))
 
 (defun lean4-indent--calc-inline-expression-column (text)
   "Return the starting column of an inline `calc` expression in TEXT, or nil."
@@ -2829,9 +2855,11 @@ to cycle to shallower alternatives."
                  (lean4-indent--embedded-calc-expression-column prev-text-no-comment)))
            (prev-delimited-sibling-indent
             (and prev-pos
-                 (string-match-p "[])}⟩]\\s-*$" prev-text)
-                   (lean4-indent--find-prev-delimited-sibling-indent
-                    prev-pos prev-indent)))
+                 (or (string-match-p "[])}⟩]\\s-*$" prev-text)
+                     (string-match-p "[])}⟩]\\.[[:word:]_'.]+\\s-*$"
+                                     prev-text-no-comment))
+                 (lean4-indent--find-prev-delimited-sibling-indent
+                  prev-pos prev-indent)))
              (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
              (open-paren-pos-prev-on-line
               (and open-paren-pos-prev
@@ -2851,6 +2879,32 @@ to cycle to shallower alternatives."
                       (buffer-substring-no-properties
                        (line-beginning-position) open-paren-pos-prev-on-line))))))
        (cond
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'colon)
+             top-level-body-indent
+             (> prev-indent top-level-body-indent)
+             (eq (lean4-indent--line-body-intro-kind prev-text-no-comment) 'colon)
+             (lean4-indent--line-ends-with-colon-p prev-text-no-comment))
+        prev-indent)
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'coloneq)
+             top-level-body-indent
+             (> prev-indent top-level-body-indent)
+             top-level-body-intro-pos
+             (= prev-pos top-level-body-intro-pos)
+             (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
+        top-level-body-indent)
+       ((and prev-pos
+             prev-delimited-sibling-indent
+             (> prev-indent (+ prev-delimited-sibling-indent step))
+             (lean4-indent--projection-head-line-p prev-text-no-comment)
+             (string-match-p "[])}⟩]\\.[[:word:]_'.]+\\s-*$" prev-text-no-comment)
+             (not open-paren-pos-prev))
+        (+ prev-delimited-sibling-indent step))
        ((and prev-pos
              (lean4-indent--projection-head-line-p prev-text-no-comment)
              (string-match-p "\\`[ \t]*((+" prev-text)
@@ -2973,7 +3027,7 @@ to cycle to shallower alternatives."
              (string-match-p "," prev-text-no-comment))
         (+ prev-indent (* 3 step)))
        ((and prev-pos
-             (memq (lean4-indent--pipe-left-tail-head-kind prev-text-no-comment)
+             (memq (lean4-indent--pipe-left-tail-head-kind prev-text-no-comment prev-pos)
                    '(atom application)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
@@ -3594,7 +3648,7 @@ to cycle to shallower alternatives."
         (+ prev-indent (* 3 step)))
        ((and prev-pos
              (lean4-indent--projection-head-line-p prev-text-no-comment)
-             (string-match-p "<|" prev-text-no-comment)
+             (lean4-indent--pipe-left-tail-head-kind prev-text-no-comment prev-pos)
              (not (lean4-indent--in-calc-block-p prev-pos)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
@@ -3797,6 +3851,24 @@ already-closed parenthesized argument."
                (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
                (not (lean4-indent--line-body-intro-kind prev-text-no-comment))))))))
 
+(defun lean4-indent--prefer-newline-helper-over-base-p ()
+  "Return non-nil when blank-line helper is more structurally faithful than base."
+  (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
+    (let ((prev-pos (lean4-indent--prev-nonblank)))
+      (when prev-pos
+        (let* ((prev-text-no-comment
+                (if (lean4-indent--comment-line-p prev-pos)
+                    ""
+                  (lean4-indent--line-text-no-comment prev-pos)))
+               (prev-indent (lean4-indent--line-indent prev-pos))
+               (sibling-indent
+                (lean4-indent--find-prev-delimited-sibling-indent prev-pos prev-indent))
+               (open-prev (lean4-indent--open-paren-pos-at-eol prev-pos)))
+          (and sibling-indent
+               (lean4-indent--projection-head-line-p prev-text-no-comment)
+               (string-match-p "[])}⟩]\\.[[:word:]_'.]+\\s-*$" prev-text-no-comment)
+               (not open-prev)))))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -3832,7 +3904,10 @@ already-closed parenthesized argument."
                                           newline-prev-indent
                                           (>= base-computed newline-prev-indent)
                                           (lean4-indent--prefer-base-indent-over-newline-helper-p))))
-                           (max newline-computed base-computed)
+                           (if (and (< newline-computed base-computed)
+                                    (lean4-indent--prefer-newline-helper-over-base-p))
+                               newline-computed
+                             (max newline-computed base-computed))
                          base-computed))
              (current (current-indentation))
              (tabp (eq this-command 'indent-for-tab-command))
