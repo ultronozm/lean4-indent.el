@@ -1800,7 +1800,7 @@ PAIRS should be a list of (TEXT EXPECTED) entries."
     (search-forward "by")
     (newline)
     (funcall #'lean4-indent-line-function)
-    (should (equal (lean4-test--line-string) "      "))))
+    (should (equal (lean4-test--line-string) "        "))))
 
 (lean4-define-final-line-indent-test
  lean4-indent--calc-absolute-value-step-coloneq-by-line
@@ -3047,7 +3047,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "theorem foo : True := by\n"
        "  calc  2 * 3\n")
     (lean4-test--goto-eob)
-    (lean4-test--newline-and-assert "    ")))
+    (lean4-test--newline-and-assert "          ")))
 
 (ert-deftest lean4-indent--newline-after-with-line-indents-branches ()
   (lean4-test-with-indent-buffer
@@ -3057,6 +3057,15 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "    ")))
 
+(ert-deftest lean4-indent--newline-after-proof-with-line-indents-its-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h : True := by\n"
+       "    cases h with\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
 (ert-deftest lean4-indent--newline-after-apply-line-indents-following-args ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3064,6 +3073,30 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "  apply _root_.Partrec.of_eq_tot\n")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-filter-upwards-line-indents-with-clause ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  filter_upwards [eventually_true] with h\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-refine-line-with-inline-term-indents-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "    refine And.intro ?_ ?_\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-local-have-type-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h : True ∧\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
 
 (ert-deftest lean4-indent--newline-after-apply-rules-line-indents-following-list ()
   (lean4-test-with-indent-buffer
@@ -3089,6 +3122,143 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "  rw [add_sq,\n")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-wrapped-top-level-header-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma foo :\n"
+       "    ∀ x,\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-calc-step-coloneq-indents-proof-term ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc (fun x => x) = fun x => x :=\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "              ")))
+
+(ert-deftest lean4-indent--newline-after-inline-calc-aligns-under-relation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have := calc 1 < 2 := by decide\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                 ")))
+
+(ert-deftest lean4-indent--newline-after-calc-step-operator-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "      _ = (a +\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "            ")))
+
+(ert-deftest lean4-indent--newline-after-calc-step-by-indents-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "      _ = a := by\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "            ")))
+
+(ert-deftest lean4-indent--newline-after-operator-led-continuation-keeps-indent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "      _ = (a + b\n"
+       "                - c\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                ")))
+
+(ert-deftest lean4-indent--newline-after-nested-coloneq-line-indents-proof-term ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "    have h : True :=\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "          ")))
+
+(ert-deftest lean4-indent--newline-inside-proof-body-keeps-current-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h : True := by\n"
+       "    simp\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-plain-application-line-indents-following-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h :=\n"
+       "    Foo.bar baz qux\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-refine-qualified-name-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  refine DifferentiableOn.mul\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-calc-expression-line-indents-next-step ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "      f x\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "          ")))
+
+(ert-deftest lean4-indent--newline-after-local-have-coloneq-by-indents-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h : True := by\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-bullet-exact-by-pipeline-indents-proof ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · exact h_base _ <| by\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-bullet-exact-application-indents-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · exact h a\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-calc-relop-projection-application-indents-deeply ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "           ≤ (Finset.Ico a b).sup' h\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                  ")))
+
+(ert-deftest lean4-indent--newline-after-calc-relop-projection-application-allows-bare-lambda ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "           ≥ (Finset.Ico a b).inf' h\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                  ")))
 
 (ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()
   (lean4-test-with-indent-buffer
