@@ -2868,11 +2868,20 @@ to cycle to shallower alternatives."
   (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
     (let* ((step lean4-indent-offset)
              (prev-pos (lean4-indent--prev-nonblank))
+             (prevprev-pos (and prev-pos
+                                (save-excursion
+                                  (goto-char prev-pos)
+                                  (lean4-indent--prev-nonblank))))
              (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
              (prev-text-no-comment
               (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
                   (lean4-indent--line-text-no-comment prev-pos)
-               ""))
+                ""))
+             (prevprev-text (if prevprev-pos (lean4-indent--line-text prevprev-pos) ""))
+             (prevprev-text-no-comment
+              (if (and prevprev-pos (not (lean4-indent--comment-line-p prevprev-pos)))
+                  (lean4-indent--line-text-no-comment prevprev-pos)
+                ""))
              (prev-comma-item-text
               (if (and prev-pos
                        (string-match-p "\\`[ \t]*," prev-text-no-comment))
@@ -2880,6 +2889,7 @@ to cycle to shallower alternatives."
                                             prev-text-no-comment)
                 prev-text-no-comment))
              (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+             (prevprev-indent (if prevprev-pos (lean4-indent--line-indent prevprev-pos) 0))
              (prev-line-has-outer-coloneq
               (and prev-pos
                    (lean4-indent--line-has-outer-coloneq-p prev-pos)))
@@ -3664,6 +3674,13 @@ to cycle to shallower alternatives."
              (lean4-indent--proof-with-line-p prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*obtain\\_>.*:\\s-*\\S-"
+              prev-text-no-comment)
+             (lean4-indent--line-ends-with-comma-p prev-text-no-comment)
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
              (lean4-indent--proof-block-opener-line-p prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
@@ -3694,6 +3711,35 @@ to cycle to shallower alternatives."
             (max (+ open-delimited-body-indent step)
                  (if open-paren-col (1+ open-paren-col) 0))
           (+ prev-indent step)))
+       ((and prev-pos
+             prevprev-pos
+             (memq (lean4-indent--line-body-intro-kind prevprev-text-no-comment)
+                   '(coloneq equals))
+             (> prevprev-indent prev-indent)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (string-match-p "\\`[ \t]*obtain\\_>.*:=\\s-*\\'" anchor-text-no-comment)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             prevprev-pos
+             (> prev-indent prevprev-indent)
+             (string-match-p "[])}⟩]\\s-*$" prev-text)
+             (string-match-p "\\`[ \t]*\\(?:rw\\|simp\\(?:_rw\\| only\\)?\\)\\_>.*\\["
+                             prevprev-text-no-comment)
+             (lean4-indent--line-ends-with-comma-p prevprev-text-no-comment))
+        (max 0 (- prev-indent (* 2 step))))
        ((and prev-pos
              (lean4-indent--inside-filter-upwards-bracket-block-p prev-pos)
              (lean4-indent--projection-head-line-p prev-text-no-comment)

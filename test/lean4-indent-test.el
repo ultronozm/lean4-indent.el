@@ -3581,6 +3581,57 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 8)))
 
+(ert-deftest lean4-indent--newline-after-obtain-proposition-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  obtain ⟨d, -, hd⟩ : ∃ d, d ∈ s ∧ ∀ {ι'} {l : Filter ι'} (w : ι' → AddCircle T) (δ : ι' → ℝ),\n"
+       "    Tendsto δ l (𝓝[>] 0) → (∀ᶠ j in l, d ∈ closedBall (w j) (1 * δ j)) →\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-obtain-inline-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  obtain ⟨d, -, hd⟩ : ∃ d, d ∈ s :=\n"
+       "    exists_mem_of_measure_ne_zero_of_ae h\n"
+       "      (IsUnifLocDoublingMeasure.ae_tendsto_measure_inter_div μ s 1)\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
+(ert-deftest lean4-indent--newline-after-second-line-of-coloneq-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem ae_empty_or_univ_of_forall_vadd_ae_eq_self {s : Set <| AddCircle T} : True := by\n"
+       "  right\n"
+       "  obtain ⟨d, -, hd⟩ : ∃ d, d ∈ s ∧ Tendsto f l (𝓝 1) :=\n"
+       "    exists_mem_of_measure_ne_zero_of_ae h\n"
+       "      (IsUnifLocDoublingMeasure.ae_tendsto_measure_inter_div μ s 1)\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
+(ert-deftest lean4-indent--newline-after-closing-rw-bracket-dedents-to-sibling-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have hu₀ : ∀ j, True := fun j => by\n"
+       "    trivial\n"
+       "  have hnu : ∀ j, True := fun j => by\n"
+       "    rw [← addOrderOf_dvd_iff_zsmul_eq_zero, hu₀, Int.natCast_pow, Int.natCast_natAbs, ← abs_pow,\n"
+       "      abs_dvd]\n"
+       "  have hu₁ : ∀ j, True := fun j => by\n")
+    (goto-char (point-min))
+    (forward-line 5)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-pipe-left-qualified-head-indents-following-args ()
   (lean4-test-with-indent-buffer
       (concat
