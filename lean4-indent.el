@@ -478,6 +478,16 @@ current line."
   "Return non-nil if TEXT is a standalone tactic target clause like `at h ⊢`."
   (string-match-p "\\`[ \t]*at\\_>.*⊢\\s-*\\'" text))
 
+(defun lean4-indent--proof-standalone-at-line-p (text)
+  "Return non-nil if TEXT is a standalone local `at ...` modifier line."
+  (string-match-p "\\`[ \t]*at\\_>.*\\'" text))
+
+(defun lean4-indent--ordinary-proof-tactic-line-p (text)
+  "Return non-nil if TEXT starts a routine proof tactic command."
+  (string-match-p
+   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:intro\\|rw\\|simp\\(?:_rw\\| only\\)?\\|unfold\\|cases\\|rcases\\|subst\\|replace\\|obtain\\|simpa\\|exact\\|refine\\|apply\\|have\\|let\\)\\_>"
+   text))
+
 (defun lean4-indent--filter-upwards-line-p (text)
   "Return non-nil if TEXT starts a `filter_upwards` line."
   (string-match-p "\\`[ \t]*filter_upwards\\_>" text))
@@ -1002,6 +1012,48 @@ deeper sibling argument."
   (string-match-p
    "\\`[ \t]*\\(?:([ \t]*\\)+@?[[:word:]_.']+\\_>\\s-+\\S-.*\\'"
    text))
+
+(defun lean4-indent--paren-led-first-argument-column (text)
+  "Return the first argument column for a parenthesized head line in TEXT.
+
+This handles shapes like `((foo x` and `⟨((foo x`, where a following line can
+continue with sibling arguments aligned under `x'."
+  (let ((i 0)
+        (len (length text))
+        (paren-count 0))
+    (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+      (setq i (1+ i)))
+    (when (and (< i len) (eq (aref text i) lean4-indent--char-left-angle))
+      (setq i (1+ i))
+      (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+        (setq i (1+ i))))
+    (while (and (< i len) (eq (aref text i) ?\())
+      (setq paren-count (1+ paren-count))
+      (setq i (1+ i))
+      (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+        (setq i (1+ i))))
+    (when (>= paren-count 2)
+      (when (string-match "@?[[:word:]_.']+\\_>\\s-+" text i)
+        (when (= (match-beginning 0) i)
+          (match-end 0))))))
+
+(defun lean4-indent--leading-paren-count (text)
+  "Return the number of leading `(' delimiters in TEXT after whitespace/`⟨'."
+  (let ((i 0)
+        (len (length text))
+        (count 0))
+    (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+      (setq i (1+ i)))
+    (when (and (< i len) (eq (aref text i) lean4-indent--char-left-angle))
+      (setq i (1+ i))
+      (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+        (setq i (1+ i))))
+    (while (and (< i len) (eq (aref text i) ?\())
+      (setq count (1+ count))
+      (setq i (1+ i))
+      (while (and (< i len) (memq (aref text i) '(?\s ?\t)))
+        (setq i (1+ i))))
+    count))
 
 (defun lean4-indent--inline-open-paren-argument-column (text)
   "Return the first inline `(' column after real head text in TEXT.
@@ -2794,6 +2846,27 @@ to cycle to shallower alternatives."
              (not (lean4-indent--in-calc-block-p prev-pos)))
         (lean4-indent--inline-open-paren-argument-column prev-text))
        ((and prev-pos
+             (lean4-indent--paren-led-first-argument-column prev-text-no-comment)
+             (not (string-match-p "<|" prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--in-calc-block-p prev-pos)))
+        (max (+ prev-indent step)
+             (lean4-indent--paren-led-first-argument-column prev-text-no-comment)))
+       ((and prev-pos
+             (lean4-indent--branch-line-p prev-text)
+             (string-match-p "\\(?:↦\\|=>\\)\\s-+\\S-" prev-text-no-comment)
+             (not (lean4-indent--pipe-left-tail-head-kind prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
+        prev-indent)
+       ((and prev-pos
+             (= prev-indent 0)
+             (string-match-p
+              "\\`[ \t]*\\(?:\\_<scoped\\_>\\s-*\\[[^]\n]+\\]\\s-+\\)?\\_<attribute\\_>"
+              prev-text-no-comment))
+        step)
+       ((and prev-pos
              top-level-context
              (eq (plist-get top-level-context :kind) 'declaration)
              (eq top-level-body-intro-kind 'colon)
@@ -2980,8 +3053,26 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         prev-indent)
        ((and prev-pos
+             (string-match-p "<|\\s-*$" prev-text-no-comment)
+             (>= (lean4-indent--leading-paren-count prev-text) 2))
+        (+ prev-indent (* 5 step)))
+       ((and prev-pos
              (string-match-p "<;>\\s-*\\'" prev-text-no-comment))
         (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (string-match-p "<;>" prev-text-no-comment)
+             (not (string-match-p "\\`[ \t]*<;>" prev-text-no-comment))
+             (not (string-match-p "<;>\\s-*\\'" prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p ";\\s-*·\\s-*\\S-" prev-text-no-comment)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        prev-indent)
        ((and prev-pos
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\)\\_>.*:=\\s-*\\S-+"
@@ -3113,6 +3204,11 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*·\\s-*exact\\_>\\s-+\\(?:@\\)?[[:word:]_'.]+\\(?:\\.[[:word:]_'.]+\\)+\\s-*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              anchor-pos
              (> prev-indent anchor-indent)
              (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
@@ -3143,6 +3239,38 @@ to cycle to shallower alternatives."
              (> prev-indent anchor-indent)
              (lean4-indent--proof-at-target-line-p prev-text-no-comment))
         anchor-indent)
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (lean4-indent--proof-standalone-at-line-p prev-text-no-comment))
+        anchor-indent)
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*·\\s-*\\(?:exact\\|refine\\|apply\\)\\_>\\s-*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--focus-dot-line-p prev-text)
+             (not (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment))
+             (not (string-match-p
+                   "\\`[ \t]*·\\s-*\\(?:exact\\|refine\\|apply\\)\\_>"
+                   prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (or (lean4-indent--focus-dot-line-p anchor-text)
+                 (lean4-indent--branch-line-p anchor-text))
+             (or (lean4-indent--ordinary-proof-tactic-line-p prev-text-no-comment)
+                 (lean4-indent--proof-standalone-at-line-p prev-text-no-comment))
+             (not (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        prev-indent)
        ((and prev-pos
              (lean4-indent--proof-with-line-p prev-text-no-comment))
         (+ prev-indent step))
@@ -3211,8 +3339,12 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (string-match-p "\\`[ \t]*·\\s-*exact\\_>\\s-+\\S-"
                              prev-text-no-comment))
-        (if (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
-                'application)
+        (if (or (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
+                    'application)
+                (let ((case-fold-search nil))
+                  (string-match-p
+                   "\\`[ \t]*·\\s-*exact\\_>\\s-+\\(?:@\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)\\|_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
+                   prev-text-no-comment)))
             (+ prev-indent (* 2 step))
           (+ prev-indent step)))
        ((and prev-pos
@@ -3315,12 +3447,31 @@ to cycle to shallower alternatives."
         (+ prev-indent step))
        ((and prev-pos
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'atom)
+             (string-match-p "\\`[ \t]*@[[:word:]_.']+\\_>\\s-+\\S-"
+                             prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  'application)
              (let ((case-fold-search nil))
                (string-match-p
                 "\\`[ \t]*\\(?:@\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)\\|_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
                 prev-text-no-comment)))
         (+ prev-indent step))
+       ((and prev-pos
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (string-match-p "\\`[ \t]*@[[:word:]_.']+\\_>\\s-+\\S-"
+                             prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*(+@?[[:word:]_'.]+\\(?:\\.[[:word:]_'.]+\\)+\\s-*$"
+              prev-text-no-comment)
+             (not (string-match-p "<|" prev-text-no-comment))
+             (not (lean4-indent--in-calc-block-p prev-pos)))
+        (+ prev-indent (* 3 step)))
        ((and prev-pos
              (lean4-indent--projection-head-line-p prev-text-no-comment)
              (string-match-p "<|" prev-text-no-comment)
@@ -3434,7 +3585,16 @@ to cycle to shallower alternatives."
               (+ body-indent step)
             (+ prev-indent step))))
        ((and prev-pos
-             (lean4-indent--focus-dot-line-p prev-text))
+             (string-match-p
+              "\\`[ \t]*·\\s-*\\(?:exact\\|refine\\|apply\\)\\_>\\s-*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--focus-dot-line-p prev-text)
+             (not (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment))
+             (not (string-match-p
+                   "\\`[ \t]*·\\s-*\\(?:exact\\|refine\\|apply\\)\\_>"
+                   prev-text-no-comment)))
         (+ prev-indent step))
        ((and prev-pos
              (memq top-level-body-intro-kind '(by coloneq-by))

@@ -3346,6 +3346,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-lowercase-at-qualified-head-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "      @prec' 1 _ _\n"
+       "        (fun v => by\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-pipe-left-continuation-indents-argument ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3462,6 +3473,16 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "  · exact h a\n")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-bullet-exact-qualified-head-indents-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · exact Nat.eq_sqrt.2\n"
+       "      ⟨h₁, h₂⟩\n")
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
 
 (ert-deftest lean4-indent--newline-after-pipe-left-qualified-head-indents-following-args ()
   (lean4-test-with-indent-buffer
@@ -3730,6 +3751,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-inline-tactic-chain-opens-next-step ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  cases o <;> simp only <;> rw [tr]\n"
+       "    <;> simp only [id, foo]\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-rw-open-bracket-indents-entries ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3774,6 +3806,98 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "      replace IH := IH hs fun q hq ↦ hw q (Or.inr hq)\n")
     (goto-char (point-min))
     (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-top-level-attribute-line-keeps-wrapping ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "attribute [simp] stepAux.eq_1 stepAux.eq_2 stepAux.eq_3\n"
+       "  stepAux.eq_4 stepAux.eq_5\n")
+    (goto-char (point-min))
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-focus-intro-line-indents-branch-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  | branch =>\n"
+       "    · intro _ _ _ IH₁ IH₂ ss' sub\n"
+       "      unfold tr at sub\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-ordinary-tactic-in-branch-keeps-body-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  | branch =>\n"
+       "    · intro _ hs\n"
+       "      rw [foo] at h\n"
+       "      rcases h with h\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-standalone-at-line-dedents-to-tactic-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  | branch =>\n"
+       "      rw [foo] at h\n"
+       "        at h\n"
+       "      rcases h with h\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-inline-branch-body-keeps-branch-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "instance option : True := by\n"
+       "    cases n with\n"
+       "      | zero => rfl\n"
+       "      | succ n =>\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-inline-semicolon-focus-keeps-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "      cases h; · simp\n"
+       "      cases h' <;> simp\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-paren-led-head-aligns-first-argument-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  ((casesOn' zero\n"
+       "            ((casesOn' zero (Nat.Primrec.succ.comp left)).comp\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-double-paren-pipe-left-indents-deeply ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "    ((Nat.Primrec.casesOn' .zero <|\n"
+       "              (Nat.Primrec.prec hf <|\n")
+    (goto-char (point-min))
+    (forward-line 1)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
@@ -4127,6 +4251,17 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
        "    (g h)).comp₁\n")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-paren-projection-head-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "    (vector_get'.comp\n"
+       "          (vector_ofFn h).of_eq\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
 
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here
