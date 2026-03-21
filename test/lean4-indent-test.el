@@ -3153,6 +3153,31 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
 
+(ert-deftest lean4-indent--newline-after-bullet-have-wrapped-type-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  refine ext fun b => ⟨fun H => ?_, fun H => ?_⟩\n"
+       "  · rcases mem_bind_iff.1 H with ⟨c, _, h₂⟩\n"
+       "    exact h₂\n"
+       "  · have : ∀ m, (Nat.rec (motive := fun _ => Part σ)\n"
+       "          (Part.some (g a)) (fun y IH => IH.bind fun _ => h a n) m).Dom := by\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-local-have-inline-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have cf := Primrec.fst.comp (Primrec.snd (α := X)\n"
+       "      (β := Y)\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-apply-rules-line-indents-following-list ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3739,6 +3764,21 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (forward-line 2)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-option-map-line-stays-at-sibling-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem sumCasesOn {f : α → β ⊕ γ} {g : α → β → σ} {h : α → γ → σ} (hf : Computable f)\n"
+       "    (hg : Computable₂ g) (hh : Computable₂ h) :\n"
+       "    @Computable _ σ _ _ fun a => Sum.casesOn (f a) (g a) (h a) :=\n"
+       "  option_some_iff.1 <|\n"
+       "    (cond (nat_bodd.comp <| encode_iff.2 hf)\n"
+       "          (option_map (Computable.decode.comp <| nat_div2.comp <| encode_iff.2 hf) hh)\n"
+       "          (option_map (Computable.decode.comp <| nat_div2.comp <| encode_iff.2 hf) hg)).of_eq\n")
+    (goto-char (point-min))
+    (forward-line 5)
+    (end-of-line)
+    (lean4-test--newline-and-assert "          ")))
 
 (ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
   (lean4-test-with-indent-buffer

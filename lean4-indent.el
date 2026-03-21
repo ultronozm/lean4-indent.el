@@ -2779,6 +2779,14 @@ to cycle to shallower alternatives."
                   (lean4-indent--line-text-no-comment prev-pos)
                 ""))
              (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+             (prev-line-has-outer-coloneq
+              (and prev-pos
+                   (lean4-indent--line-has-outer-coloneq-p prev-pos)))
+             (prev-anonymous-typed-local-decl-p
+              (and prev-pos
+                   (string-match-p
+                    "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\s-*:"
+                    prev-text-no-comment)))
              (top-level-context (and prev-pos
                                      (lean4-indent--top-level-context prev-pos step)))
              (top-level-body-indent (plist-get top-level-context :body-indent))
@@ -2818,15 +2826,24 @@ to cycle to shallower alternatives."
                    (lean4-indent--find-prev-delimited-sibling-indent
                     prev-pos prev-indent)))
              (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
-             (open-paren-prefix-has-real-text
+             (open-paren-pos-prev-on-line
               (and open-paren-pos-prev
+                   prev-pos
                    (save-excursion
-                     (goto-char open-paren-pos-prev)
+                     (goto-char prev-pos)
+                     (<= (line-beginning-position)
+                         open-paren-pos-prev
+                         (line-end-position)))
+                   open-paren-pos-prev))
+             (open-paren-prefix-has-real-text
+              (and open-paren-pos-prev-on-line
+                   (save-excursion
+                     (goto-char open-paren-pos-prev-on-line)
                      (string-match-p
                       "[^ \t(\\[{⟨]"
                       (buffer-substring-no-properties
-                       (line-beginning-position) open-paren-pos-prev))))))
-        (cond
+                       (line-beginning-position) open-paren-pos-prev-on-line))))))
+       (cond
        ((and prev-pos
              (lean4-indent--projection-head-line-p prev-text-no-comment)
              (string-match-p "\\`[ \t]*((+" prev-text)
@@ -2839,14 +2856,69 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)))
         calc-relation-col)
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\)\\_>.*:=\\s-*\\S-+"
+              prev-text-no-comment)
+             (string-match-p ")\\s-*$" prev-text)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (string-match-p ")\\s-*$" prev-text)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             open-paren-pos-prev
+             open-paren-prefix-has-real-text
+             (lean4-indent--focus-dot-line-p prev-text)
+             (string-match-p "\\_<\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+                             prev-text-no-comment)
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
+        (+ prev-indent (* 4 step)))
+       ((and prev-pos
+             open-paren-pos-prev
+             open-paren-prefix-has-real-text
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+              prev-text-no-comment)
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
+        (+ prev-indent (* 4 step)))
+       ((and prev-pos
+             open-delimited-body-indent
+             (lean4-indent--focus-dot-line-p prev-text)
+             (string-match-p "\\_<\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+                             prev-text-no-comment)
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
+        (max (+ open-delimited-body-indent step)
+             (+ prev-indent (* 2 step))))
+       ((and prev-pos
+             (lean4-indent--focus-dot-line-p prev-text)
+             (string-match-p "\\_<\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+                             prev-text-no-comment)
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (lean4-indent--paren-led-application-tail-line-p prev-text-no-comment)
              (lean4-indent--inline-open-paren-argument-column prev-text)
+             open-paren-pos-prev-on-line
              (not (lean4-indent--projection-head-line-p prev-text-no-comment))
              (not (lean4-indent--projection-application-tail-line-p prev-text-no-comment))
              (not (lean4-indent--in-calc-block-p prev-pos)))
         (lean4-indent--inline-open-paren-argument-column prev-text))
        ((and prev-pos
              (lean4-indent--paren-led-first-argument-column prev-text-no-comment)
+             open-paren-pos-prev-on-line
              (not (string-match-p "<|" prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
@@ -2992,10 +3064,20 @@ to cycle to shallower alternatives."
              (lean4-indent--inequality-rhs-column prev-text-no-comment))
         (1- (lean4-indent--inequality-rhs-column prev-text-no-comment)))
        ((and prev-pos
+             open-delimited-body-indent
              (string-match-p
-              "\\`[ \t]*\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
               prev-text-no-comment)
-             (not (string-match-p ":=" prev-text-no-comment)))
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
+        (max (+ open-delimited-body-indent step)
+             (+ prev-indent (* 2 step))))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
+              prev-text-no-comment)
+             (or prev-anonymous-typed-local-decl-p
+                 (not prev-line-has-outer-coloneq)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
@@ -3019,13 +3101,13 @@ to cycle to shallower alternatives."
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*,\\s-*\\'"
               prev-text-no-comment)
-             (not (string-match-p ":=" prev-text-no-comment)))
+             (not prev-line-has-outer-coloneq))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*=\\s-*\\'"
               prev-text-no-comment)
-             (not (string-match-p ":=" prev-text-no-comment)))
+             (not prev-line-has-outer-coloneq))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (string-match-p
@@ -3039,7 +3121,7 @@ to cycle to shallower alternatives."
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*\\(?:→\\|->\\)\\s-*\\'"
               prev-text-no-comment)
-             (not (string-match-p ":=" prev-text-no-comment)))
+             (not prev-line-has-outer-coloneq))
         (+ prev-indent (* 3 step)))
        ((and prev-pos
              (string-match-p "\\`[ \t]*simp\\?\\_>.*\\_<says\\_>\\s-*\\'"
@@ -3511,6 +3593,7 @@ to cycle to shallower alternatives."
         (+ prev-indent step))
        ((and prev-pos
              (lean4-indent--inline-open-paren-argument-column prev-text)
+             open-paren-pos-prev-on-line
              (not (lean4-indent--in-calc-block-p prev-pos))
              (> prev-indent (max (or top-level-body-indent 0) anchor-indent))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
@@ -3549,6 +3632,7 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (lean4-indent--line-starts-with-paren-p prev-text)
              (lean4-indent--paren-led-bare-head-line-p prev-text-no-comment)
+             open-paren-pos-prev-on-line
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
         (+ prev-indent (* 2 step)))
        ((and open-delimited-body-indent
@@ -3656,6 +3740,37 @@ to cycle to shallower alternatives."
         (+ prev-indent step))
          (t nil))))))
 
+(defun lean4-indent--prefer-base-indent-over-newline-helper-p ()
+  "Return non-nil when blank-line helper should defer to base indentation.
+
+This handles lines that begin with a balanced parenthesized term whose
+continuation should align with an outer sibling rather than an inner
+already-closed parenthesized argument."
+  (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
+    (let ((prev-pos (lean4-indent--prev-nonblank)))
+      (when prev-pos
+        (let* ((prev-text (lean4-indent--line-text prev-pos))
+               (prev-text-no-comment
+                (if (lean4-indent--comment-line-p prev-pos)
+                    ""
+                  (lean4-indent--line-text-no-comment prev-pos)))
+               (open-prev (lean4-indent--open-paren-pos-at-eol prev-pos))
+               (open-prev-on-line
+                (and open-prev
+                     (save-excursion
+                       (goto-char prev-pos)
+                       (<= (line-beginning-position)
+                           open-prev
+                           (line-end-position))))))
+          (and (lean4-indent--line-starts-with-paren-p prev-text)
+               (string-match-p "[])}⟩]\\s-*$" prev-text)
+               (not open-prev-on-line)
+               (not (lean4-indent--projection-head-line-p prev-text-no-comment))
+               (not (lean4-indent--projection-application-tail-line-p prev-text-no-comment))
+               (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+               (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+               (not (lean4-indent--line-body-intro-kind prev-text-no-comment))))))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -3678,9 +3793,19 @@ to cycle to shallower alternatives."
             (end-of-line)))
       )
      (t
-      (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
+     (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
              (base-computed (lean4-indent--compute-indent))
-             (computed (if newline-computed
+             (newline-prev-pos
+              (and newline-computed
+                   (save-excursion (lean4-indent--prev-nonblank))))
+             (newline-prev-indent
+              (and newline-prev-pos
+                   (lean4-indent--line-indent newline-prev-pos)))
+             (computed (if (and newline-computed
+                                (not (and (> newline-computed base-computed)
+                                          newline-prev-indent
+                                          (>= base-computed newline-prev-indent)
+                                          (lean4-indent--prefer-base-indent-over-newline-helper-p))))
                            (max newline-computed base-computed)
                          base-computed))
              (current (current-indentation))
@@ -3689,6 +3814,7 @@ to cycle to shallower alternatives."
                       ((and tabp (eq last-command 'indent-for-tab-command))
                        (lean4-indent--cycle-indent computed current))
                       ((and (not tabp)
+                            (not newline-computed)
                             (> current 0)
                             (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
                                      (or (< current computed)
