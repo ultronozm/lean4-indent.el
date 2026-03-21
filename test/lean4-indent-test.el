@@ -3919,6 +3919,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-apply-config-opens-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  apply (config := { allowSynthFailures := true }) equalizerCondition_yonedaPresheaf\n"
+       "    (CompHausLike.compHausLikeToTop.{u} P) X\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-bullet-intro-binders-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3941,6 +3952,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "        (F.obj (toLightProfinite.op.obj ⟨of PUnit.{u + 1}⟩))) :=\n")
     (goto-char (point-min))
     (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-single-wrapped-binder-colon-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem equalizerCondition_yonedaPresheaf\n"
+       "    [∀ (Z B : C) (π : Z ⟶ B) [EffectiveEpi π], PreservesLimit (cospan π π) G]\n"
+       "    (hq : ∀ (Z B : C) (π : Z ⟶ B) [EffectiveEpi π], IsQuotientMap (G.map π)) :\n"
+       "      EqualizerCondition (yonedaPresheaf G X) := by\n")
+    (goto-char (point-min))
+    (forward-line 2)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 

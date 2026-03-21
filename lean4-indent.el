@@ -714,6 +714,21 @@ wrapped `variable' lines, or nil if TEXT is neither."
    ((string-match-p "\\`[ \t]*\\_<variable\\_>" text) 'variable)
    (t nil)))
 
+(defun lean4-indent--line-leading-binder-group-count (pos)
+  "Return the number of leading top-level binder groups on the line at POS."
+  (save-excursion
+    (goto-char pos)
+    (beginning-of-line)
+    (skip-chars-forward " \t")
+    (let ((count 0)
+          end)
+      (while (and (looking-at-p "[][()]")
+                  (setq end (ignore-errors (scan-sexps (point) 1))))
+        (setq count (1+ count))
+        (goto-char end)
+        (skip-chars-forward " \t"))
+      count)))
+
 (defun lean4-indent--line-top-level-wrappable-anchor-p (text)
   "Return non-nil if TEXT starts a wrapped top-level command header."
   (let ((case-fold-search nil))
@@ -2820,6 +2835,9 @@ to cycle to shallower alternatives."
                    (string-match-p
                     "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\s-*:"
                     prev-text-no-comment)))
+             (prev-leading-binder-groups
+              (and prev-pos
+                   (lean4-indent--line-leading-binder-group-count prev-pos)))
              (top-level-context (and prev-pos
                                      (lean4-indent--top-level-context prev-pos step)))
              (top-level-body-indent (plist-get top-level-context :body-indent))
@@ -2887,8 +2905,18 @@ to cycle to shallower alternatives."
              (> prev-indent top-level-body-indent)
              (eq (lean4-indent--line-body-intro-kind prev-text-no-comment) 'colon)
              (lean4-indent--line-ends-with-colon-p prev-text-no-comment)
-             (string-match-p "\\`[ \t]*(.+\\s-*:\\s-*$" prev-text-no-comment))
+             (> prev-leading-binder-groups 1))
         prev-indent)
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'colon)
+             top-level-body-indent
+             (> prev-indent top-level-body-indent)
+             (eq (lean4-indent--line-body-intro-kind prev-text-no-comment) 'colon)
+             (lean4-indent--line-ends-with-colon-p prev-text-no-comment)
+             (= prev-leading-binder-groups 1))
+        (+ prev-indent step))
        ((and prev-pos
              (= prev-indent 0)
              (string-match-p "\\`[ \t]*\\_<variable\\_>\\s-+\\S-" prev-text-no-comment)
@@ -3544,6 +3572,11 @@ to cycle to shallower alternatives."
                (string-match-p
                 "\\`[ \t]*apply\\_>\\s-+\\(?:@\\)?[[:word:]_'.]+\\(?:\\.ext\\|_ext\\)\\_>"
                 prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*apply\\_>\\s-+(config\\s-*:=.+)\\s-+\\S-"
+              prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
              (string-match-p "\\`[ \t]*\\(?:exact\\|refine\\)\\_>\\s-+\\S-" prev-text-no-comment))
