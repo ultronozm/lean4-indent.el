@@ -2991,7 +2991,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "    (fun _ _ _ _ h₁ h₂ ↦ by convert congr_arg₂ (· * ·) h₁ h₂ <;> rw [← map_mul] <;> rfl) hx\n")
     (lean4-test--goto-line 3)
     (end-of-line)
-    (lean4-test--newline-and-assert "    ")))
+    (lean4-test--newline-and-assert "  ")))
 
 (ert-deftest lean4-indent--newline-after-let-left-arrow-indents-deeper ()
   (lean4-test-with-indent-buffer
@@ -3039,6 +3039,55 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "      { env, ngen := info.ngen }\n")
     (lean4-test--goto-line 5)
     (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-calc-indents-to-step-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc  2 * 3\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-with-line-indents-branches ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  induction n with\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-apply-line-indents-following-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  apply _root_.Partrec.of_eq_tot\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-apply-rules-line-indents-following-list ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  apply_rules\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-quantifier-line-ending-comma-indents-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have :\n"
+       "    ∀ {m n},\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-comma-inside-delimited-term-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  rw [add_sq,\n")
+    (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
 
 (ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()

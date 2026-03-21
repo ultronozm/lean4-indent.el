@@ -446,6 +446,18 @@ current line."
   "Return non-nil if TEXT ends with ←, allowing a trailing line comment."
   (lean4-indent--ends-with-keyword-p text lean4-indent--re-ends-left-arrow))
 
+(defun lean4-indent--line-starts-with-quantifier-and-ends-with-comma-p (text)
+  "Return non-nil if TEXT starts with a quantifier binder and ends with a comma."
+  (let ((trim (string-trim-left text)))
+    (and (string-match-p "\\`\\(?:∀\\|∃\\|Σ\\|Π\\)" trim)
+         (lean4-indent--line-ends-with-comma-p trim))))
+
+(defun lean4-indent--qualified-apply-line-p (text)
+  "Return non-nil if TEXT is an `apply` line headed by a qualified name."
+  (string-match-p
+   "\\`[ \t]*apply\\_>\\s-+\\(?:_root_\\.\\|[[:word:]_'.]+\\.\\)"
+   text))
+
 (defun lean4-indent--line-ends-with-term-continuation-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-term-continuation))
 
@@ -1035,6 +1047,26 @@ the line; otherwise indent from the delimiter column."
       (+ open-line-indent step))
      (t
       (+ open-paren-col step)))))
+
+(defun lean4-indent--find-prev-delimited-sibling-indent (start-pos prev-indent)
+  "Return indent of nearest earlier less-indented delimiter-led sibling line.
+
+Scan backward from START-POS through nonblank lines.  When a line indented less
+than PREV-INDENT starts with a delimiter-led term, return its indentation."
+  (save-excursion
+    (goto-char start-pos)
+    (let ((ceiling-indent prev-indent)
+          (found nil))
+      (while (and (not found) (not (bobp)))
+        (forward-line -1)
+        (let* ((text (lean4-indent--line-text (point)))
+               (indent (lean4-indent--line-indent (point))))
+          (unless (lean4-indent--line-blank-p text)
+            (when (< indent ceiling-indent)
+              (if (lean4-indent--line-starts-with-paren-p text)
+                  (setq found indent)
+                (setq ceiling-indent indent))))))
+      found)))
 
 ;;; Anchor helpers
 (defun lean4-indent--find-anchor (prev-pos prev-indent)
@@ -2454,6 +2486,15 @@ to cycle to shallower alternatives."
                                    (lean4-indent--top-level-context prev-pos step)))
            (top-level-body-indent (plist-get top-level-context :body-indent))
            (top-level-body-intro-kind (plist-get top-level-context :body-intro-kind))
+           (anchor (and prev-pos
+                        (lean4-indent--find-anchor prev-pos prev-indent)))
+           (anchor-pos (car-safe anchor))
+           (anchor-indent (if anchor (cdr anchor) 0))
+           (anchor-text (if anchor-pos (lean4-indent--line-text anchor-pos) ""))
+           (anchor-text-no-comment
+            (if (and anchor-pos (not (lean4-indent--comment-line-p anchor-pos)))
+                (lean4-indent--line-text-no-comment anchor-pos)
+              ""))
            (open-paren-pos (lean4-indent--open-paren-pos (point)))
            (open-paren-col (and open-paren-pos
                                 (save-excursion
@@ -2463,6 +2504,11 @@ to cycle to shallower alternatives."
             (and open-paren-pos open-paren-col
                  (lean4-indent--open-delimited-body-indent
                   open-paren-pos open-paren-col step)))
+           (prev-delimited-sibling-indent
+            (and prev-pos
+                 (string-match-p "[])}⟩]\\s-*$" prev-text)
+                 (lean4-indent--find-prev-delimited-sibling-indent
+                  prev-pos prev-indent)))
            (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
            (open-paren-prefix-has-real-text
             (and open-paren-pos-prev
@@ -2472,40 +2518,70 @@ to cycle to shallower alternatives."
                     "[^ \t(\\[{⟨]"
                     (buffer-substring-no-properties
                      (line-beginning-position) open-paren-pos-prev))))))
-      (let* ((preferred
-              (cond
-               ((and prev-pos
-                     (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
-                (+ prev-indent step))
-               ((and prev-pos
-                     open-paren-pos-prev
-                     open-paren-prefix-has-real-text)
-                (+ prev-indent (* 2 step)))
-               (open-delimited-body-indent
-                open-delimited-body-indent)
-               ((and prev-pos
-                     (lean4-indent--line-starts-with-paren-p prev-text)
-                     (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
-                     (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
-                     (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
-                (+ prev-indent step))
-               ((and prev-pos
-                     top-level-body-indent
-                     (eq top-level-body-intro-kind 'do)
-                     (> prev-indent top-level-body-indent)
-                     (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
-                     (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
-                     (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
-                top-level-body-indent)
-               (t nil)))
-             (next-pos (lean4-indent--next-nonblank))
-             (next-indent (and next-pos
-                               (not (lean4-indent--comment-line-p next-pos))
-                               (not (lean4-indent--string-line-p next-pos))
-                               (lean4-indent--line-indent next-pos))))
-        (if next-indent
-            (max (or preferred 0) next-indent)
-          preferred)))))
+      (cond
+       ((and prev-pos
+             (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-calc))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--line-ends-with-with-p prev-pos))
+        (+ prev-indent step))
+       ((and prev-pos
+             (or (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment)
+                 (lean4-indent--qualified-apply-line-p prev-text-no-comment)
+                 (string-match-p "\\`[ \t]*apply_rules\\_>" prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             open-delimited-body-indent
+             (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+        (max (+ open-delimited-body-indent step)
+             (if open-paren-col (1+ open-paren-col) 0)))
+       ((and prev-pos
+             open-paren-pos-prev
+             open-paren-prefix-has-real-text)
+        (+ prev-indent (* 2 step)))
+       (open-delimited-body-indent
+        open-delimited-body-indent)
+       (prev-delimited-sibling-indent
+        prev-delimited-sibling-indent)
+       ((and prev-pos
+             (lean4-indent--focus-dot-line-p prev-text))
+        (+ prev-indent step))
+       ((and prev-pos
+             top-level-body-indent
+             (eq top-level-body-intro-kind 'do)
+             (> prev-indent top-level-body-indent)
+             (not (lean4-indent--line-starts-with-paren-p prev-text))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        top-level-body-indent)
+       ((and prev-pos
+             (string-match-p "[])}⟩]\\s-*$" prev-text)
+             anchor-pos
+             (lean4-indent--open-paren-pos-at-eol anchor-pos))
+        (+ anchor-indent step))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (lean4-indent--bare-tactic-term-intro-line-p anchor-text-no-comment)
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--line-starts-with-quantifier-and-ends-with-comma-p
+              prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--line-starts-with-paren-p prev-text)
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
+        (+ prev-indent step))
+       (t nil)))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
