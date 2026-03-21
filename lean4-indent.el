@@ -968,7 +968,7 @@ tail."
 This recognizes lines of the form `...).foo arg`, where a further
 argument on the next line is a natural deep continuation."
   (string-match-p
-   "[)}⟩]\\.[[:word:]_']+\\_>\\s-+\\S-+\\s-*$"
+   "[)}⟩]\\.[[:word:]_']+\\_>\\s-+\\S-.*\\s-*$"
    text))
 
 (defun lean4-indent--projection-head-line-p (text)
@@ -989,6 +989,15 @@ argument on the next line is a natural deep continuation."
 (defun lean4-indent--paren-led-bare-head-line-p (text)
   "Return non-nil when TEXT is a parenthesized bare head awaiting arguments."
   (string-match-p "\\`[ \t]*\\(?:([ \t]*\\)+@?[[:word:]_.']+\\s-*\\'" text))
+
+(defun lean4-indent--paren-led-application-tail-line-p (text)
+  "Return non-nil when TEXT starts with a parenthesized head and one argument.
+
+This recognizes shapes like `(cond x` where a following line is naturally a
+deeper sibling argument."
+  (string-match-p
+   "\\`[ \t]*\\(?:([ \t]*\\)+@?[[:word:]_.']+\\_>\\s-+\\S-.*\\'"
+   text))
 
 (defun lean4-indent--inline-open-paren-argument-column (text)
   "Return the first inline `(' column after real head text in TEXT.
@@ -2774,6 +2783,13 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)))
         calc-relation-col)
        ((and prev-pos
+             (lean4-indent--paren-led-application-tail-line-p prev-text-no-comment)
+             (lean4-indent--inline-open-paren-argument-column prev-text)
+             (not (lean4-indent--projection-head-line-p prev-text-no-comment))
+             (not (lean4-indent--projection-application-tail-line-p prev-text-no-comment))
+             (not (lean4-indent--in-calc-block-p prev-pos)))
+        (lean4-indent--inline-open-paren-argument-column prev-text))
+       ((and prev-pos
              top-level-context
              (eq (plist-get top-level-context :kind) 'declaration)
              (eq top-level-body-intro-kind 'colon)
@@ -2804,6 +2820,10 @@ to cycle to shallower alternatives."
              (> prev-indent open-delimited-body-indent)
              (string-match-p "\\`[ \t]*(\\S-" prev-text-no-comment)
              (not (lean4-indent--inside-filter-upwards-bracket-block-p prev-pos))
+             (not (lean4-indent--projection-application-tail-line-p prev-text-no-comment))
+             (not (lean4-indent--paren-led-application-tail-line-p prev-text-no-comment))
+             (not (lean4-indent--projection-head-line-p prev-text-no-comment))
+             (not (string-match-p "<|\\s-*$" prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
         prev-indent)
@@ -3210,6 +3230,22 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
         (+ prev-indent (* 3 step)))
        ((and prev-pos
+             open-delimited-body-indent
+             (> prev-indent open-delimited-body-indent)
+             (lean4-indent--projection-application-tail-line-p prev-text-no-comment)
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             open-delimited-body-indent
+             (> prev-indent open-delimited-body-indent)
+             (lean4-indent--paren-led-application-tail-line-p prev-text-no-comment)
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
              anchor-pos
              (> prev-indent anchor-indent)
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
@@ -3345,6 +3381,10 @@ to cycle to shallower alternatives."
         (+ prev-indent (* 2 step)))
        ((and open-delimited-body-indent
              prev-pos
+             (not (and (lean4-indent--line-starts-with-paren-p prev-text)
+                       (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
+                       (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+                       (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))))
              (not (string-match-p "[])}⟩]\\s-*$" prev-text)))
         open-delimited-body-indent)
        ((and prev-pos

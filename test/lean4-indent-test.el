@@ -3695,6 +3695,30 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-projection-tail-with-paren-arg-indents-next-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have h : Partrec fun a : α × ℕ =>\n"
+       "    (encode (decode (α := β) a.2)).casesOn (some Option.none)\n"
+       "      fun n => Part.map (f a.1) (decode (α := β) n) :=\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-paren-led-application-tail-indents-next-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  option_some_iff.1 <|\n"
+       "    (cond (nat_bodd.comp <| encode_iff.2 hf)\n"
+       "          (option_map (Computable.decode.comp <| nat_div2.comp <| encode_iff.2 hf) hh)\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
   (lean4-test-with-indent-buffer
       (concat
