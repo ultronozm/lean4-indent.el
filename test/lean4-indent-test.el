@@ -3363,6 +3363,45 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "                  ")))
 
+(ert-deftest lean4-indent--newline-after-nested-fat-arrow-under-parens-keeps-body-depth ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo {f : ℕ →. ℕ} (hf : Nat.Partrec f) : True := by\n"
+       "  refine\n"
+       "    Partrec.map\n"
+       "      ((@Partrec₂.unpaired' fun a b : ℕ =>\n"
+       "            Nat.rfind fun n => (fun m => m = 0) <$> f (Nat.pair a (n + b))).1\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-bare-application-head-in-local-body-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo {f : ℕ →. ℕ} (hf : Nat.Partrec f) : True := by\n"
+       "  have : Nat.Partrec (fun a => Nat.rfind (fun n => f (Nat.pair a n))) :=\n"
+       "    rfind\n"
+       "      (Partrec₂.unpaired'.2\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-nested-projection-application-indents-deeper ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo {f : ℕ →. ℕ} (hf : Nat.Partrec f) : True := by\n"
+       "  have : Nat.Partrec (fun a => Nat.rfind (fun n => f (Nat.pair a n))) :=\n"
+       "    rfind\n"
+       "      (Partrec₂.unpaired'.2\n"
+       "        ((Partrec.nat_iff.2 hf).comp\n"
+       "            (Primrec₂.pair.comp Primrec.fst Primrec.snd)\n")
+    (goto-char (point-min))
+    (forward-line 4)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()
   (lean4-test-with-indent-buffer
       (concat

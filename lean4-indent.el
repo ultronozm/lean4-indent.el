@@ -1993,6 +1993,17 @@ not inside such a declaration."
             prev-text-no-comment)
            (not (lean4-indent--starts-with-p current-text ":=")))
       prev-indent)
+     ;; 4.3) A bare application head immediately after a := / = line can keep taking arguments.
+     ((and prev-pos
+           prevprev-pos
+           anchor-pos
+           (> prev-indent anchor-indent)
+           (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+               'atom)
+           (not anchor-body-intro-kind)
+           (memq prevprev-body-intro-kind '(coloneq equals))
+           (< prev-indent prevprev-indent))
+      (+ prev-indent step))
      ;; 4.5) Focus-dot lines that open a block should indent one step.
      ((and prev-starts-with-focus
            (memq prev-body-intro-kind '(calc by coloneq-by coloneq)))
@@ -2981,6 +2992,23 @@ to cycle to shallower alternatives."
                    '(application)))
         (+ prev-indent step))
        ((and prev-pos
+             (eq (lean4-indent--line-body-intro-kind prev-text-no-comment) 'fat-arrow)
+             (string-match-p "\\`[ \t]*(+" prev-text)
+             (not (lean4-indent--line-starts-with-paren-and-closes-p prev-pos)))
+        (+ prev-indent (* 3 step)))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'atom)
+             (memq (lean4-indent--line-body-intro-kind anchor-text-no-comment)
+                   '(coloneq fat-arrow fun-arrow equals
+                     open-brace where))
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
              anchor-pos
              (> prev-indent anchor-indent)
              (eq (lean4-indent--line-body-intro-kind anchor-text-no-comment)
@@ -3021,8 +3049,16 @@ to cycle to shallower alternatives."
              (not (lean4-indent--in-calc-block-p prev-pos))
              anchor-pos
              (> prev-indent anchor-indent)
-             (eq (lean4-indent--line-application-head-kind anchor-text-no-comment)
-                 'atom))
+             (string-match-p "\\`[ \t]*(+" anchor-text)
+             (not (string-match-p "<|" anchor-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--projection-head-line-p prev-text-no-comment)
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (memq (lean4-indent--line-application-head-kind anchor-text-no-comment)
+                   '(atom application)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (lean4-indent--projection-head-line-p prev-text-no-comment)
