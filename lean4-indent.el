@@ -2998,6 +2998,15 @@ to cycle to shallower alternatives."
              (not (string-match-p ":=" prev-text-no-comment)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
+             (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
+                 'application)
+             (not (string-match-p "\\`[ \t]*·\\s-*\\(?:exact\\|refine\\|apply\\)\\_>"
+                                  prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
              (memq top-level-body-intro-kind '(by coloneq-by))
              anchor-pos
              (> prev-indent anchor-indent)
@@ -3267,6 +3276,9 @@ to cycle to shallower alternatives."
              (or (lean4-indent--ordinary-proof-tactic-line-p prev-text-no-comment)
                  (lean4-indent--proof-standalone-at-line-p prev-text-no-comment))
              (not (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment))
+             (not (string-match-p
+                   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:exact\\|refine\\|apply\\)\\_>\\s-+\\S-"
+                   prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
