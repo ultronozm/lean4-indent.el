@@ -2775,9 +2775,15 @@ to cycle to shallower alternatives."
              (prev-pos (lean4-indent--prev-nonblank))
              (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
              (prev-text-no-comment
-              (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
-                  (lean4-indent--line-text-no-comment prev-pos)
-                ""))
+             (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
+                 (lean4-indent--line-text-no-comment prev-pos)
+               ""))
+             (prev-comma-item-text
+              (if (and prev-pos
+                       (string-match-p "\\`[ \t]*," prev-text-no-comment))
+                  (replace-regexp-in-string "\\`[ \t]*,\\s-*" ""
+                                            prev-text-no-comment)
+                prev-text-no-comment))
              (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
              (prev-line-has-outer-coloneq
               (and prev-pos
@@ -2855,6 +2861,25 @@ to cycle to shallower alternatives."
        ((and calc-relation-col
              (not (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)))
         calc-relation-col)
+       ((and prev-pos
+             prev-line-has-outer-coloneq
+             (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                   '(atom application))
+             (string-match-p "_\\s-*$" prev-text-no-comment)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             open-delimited-body-indent
+             (string-match-p "\\`[ \t]*," prev-text-no-comment)
+             (memq (lean4-indent--line-application-head-kind prev-comma-item-text)
+                   '(atom application))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (max (+ open-delimited-body-indent step)
+             (+ prev-indent (* 2 step))))
        ((and prev-pos
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\)\\_>.*:=\\s-*\\S-+"

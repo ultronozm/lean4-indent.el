@@ -3780,6 +3780,35 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "          ")))
 
+(ert-deftest lean4-indent--newline-after-comma-led-list-item-keeps-wrapped-argument-indent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem isDiscrete_tfae (X : CondensedSet.{u}) :\n"
+       "    TFAE\n"
+       "    [ X.IsDiscrete\n"
+       "    , IsIso ((Condensed.discreteUnderlyingAdj _).counit.app X)\n"
+       "    , (Condensed.discrete _).essImage X\n"
+       "    , CondensedSet.LocallyConstant.functor.essImage X\n"
+       "    , IsIso (CondensedSet.LocallyConstant.adjunction.counit.app X)\n"
+       "    , Sheaf.IsConstant (coherentTopology Profinite)\n"
+       "        ((Condensed.ProfiniteCompHaus.equivalence _).inverse.obj X)\n"
+       "    ] := by\n")
+    (goto-char (point-min))
+    (forward-line 7)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-tfae-have-inline-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  tfae_have 1 ↔ 4 := Sheaf.isConstant_iff_mem_essImage _\n"
+       "    LightProfinite.isTerminalPUnit (adjunction R) _\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
   (lean4-test-with-indent-buffer
       (concat
