@@ -3609,6 +3609,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-top-level-application-with-universe-args-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "abbrev functor : Type u ⥤ LightCondSet.{u} :=\n"
+       "  CompHausLike.LocallyConstant.functor.{u, u}\n"
+       "    (P := fun X ↦ TotallyDisconnectedSpace X ∧ SecondCountableTopology X)\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-top-level-bare-head-indents-first-arg-deeply ()
   (lean4-test-with-indent-buffer
       (concat

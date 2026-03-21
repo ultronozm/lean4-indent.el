@@ -845,7 +845,8 @@ This also treats `classical exact fun` as a fun form."
 Return `atom' for a single identifier-like head, `application' for an
 unparenthesized application head, or nil otherwise."
   (let* ((trim (string-trim text))
-         (body-intro-kind (lean4-indent--line-body-intro-kind trim)))
+         (body-intro-kind (lean4-indent--line-body-intro-kind trim))
+         (head-re "@?[[:word:]_.']+\\(?:\\.[{][^}\n]+[}]\\)?"))
     (and (not body-intro-kind)
          (not (string-match-p lean4-indent--top-level-anchors-re trim))
          (not (string-match-p
@@ -855,9 +856,9 @@ unparenthesized application head, or nil otherwise."
          (not (lean4-indent--focus-dot-line-p trim))
          (not (lean4-indent--line-starts-with-closing-p trim))
          (cond
-          ((string-match-p "\\`@?[[:word:]_.']+\\'" trim)
+          ((string-match-p (concat "\\`" head-re "\\'") trim)
            'atom)
-          ((and (string-match-p "\\`@?[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
+          ((and (string-match-p (concat "\\`" head-re "\\(?:\\s-+.+\\)\\'") trim)
                 (not (lean4-indent--line-ends-with-comma-p trim))
                 (not (lean4-indent--line-ends-with-term-continuation-p trim)))
            'application)
