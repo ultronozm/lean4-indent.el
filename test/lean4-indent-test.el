@@ -3402,6 +3402,83 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-change-line-indents-equation-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  change G₁ ((a, xs), n, m)\n"
+       "    = some (F a (ofNat Code (n + 4)))\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-cond-line-indents-branches ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  cond n.bodd\n"
+       "    (cond n.div2.bodd (rf a (ofNat Code m, s))\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-top-level-application-body-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True :=\n"
+       "  primrec_recOn' hc hz hs hl hr\n"
+       "    (pr := fun a b => pr a b.1 b.2)\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-simpa-using-indents-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  simpa [a0, add_comm, add_left_comm] using\n"
+       "    evaln_mono h hk₂\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-induction-with-indents-branch-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  induction c generalizing n x with\n"
+       "      simp [eval, evaln] at h ⊢\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-simp-says-indents-rewrite ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  simp? [Bind.bind, Option.bind_eq_some_iff] at h ⊢ says\n"
+       "    simp only [bind, Option.mem_def] at h ⊢\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-bullet-have-inline-projection-rhs-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · have L := (Primrec.fst.comp Primrec.fst).comp\n"
+       "      (Primrec.fst (α := X) (β := Y))\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--tab-on-blank-tactic-line-goes-to-tactic-column ()
   (lean4-test-with-indent-buffer
       (concat
