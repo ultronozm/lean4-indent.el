@@ -58,6 +58,18 @@ line in these specs."
   (lean4-test--newline-and-indent)
   (should (equal (lean4-test--line-string) expected)))
 
+(defun lean4-test--newline-lower-bound-and-assert ()
+  "Run `newline-and-indent' and assert the new line is deep enough.
+
+The inserted line must be indented at least as much as the original
+following line in the test fixture."
+  (let ((expected
+         (save-excursion
+           (forward-line 1)
+           (current-indentation))))
+    (lean4-test--newline-and-indent)
+    (should (>= (current-indentation) expected))))
+
 (defun lean4-test--open-line-below ()
   "Insert a newline below point without indenting it first."
   (end-of-line)
@@ -3192,6 +3204,70 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "        ")))
 
+(ert-deftest lean4-indent--newline-after-top-level-coloneq-header-indents-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma injective_sumCoeffsExp : Function.Injective (fun (p : Real) => p) :=\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-bare-top-level-deriving-indents-classes ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "inductive Foo\n"
+       "  | bar\n"
+       "deriving\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-suffices-proposition-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · suffices ∀ a', True → ∀ k, True →\n"
+        "        True by\n")
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-havei-inline-value-stays-at-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  haveI := Classical.decEq Nat\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-at-qualified-head-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def foo : { n // True } :=\n"
+       "  suffices ∀ k, True → { n // True } from\n"
+       "    this 0 fun _ => trivial\n"
+       "  @WellFounded.fix _ _ wf\n"
+       "    (by\n")
+    (lean4-test--goto-eob)
+    (forward-line -1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-pipe-left-continuation-indents-argument ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  exact h\n"
+       "    <| f x\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-focus-refine-indents-argument ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · refine IsBigO.mul_isLittleO\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
 (ert-deftest lean4-indent--newline-after-operator-led-continuation-keeps-indent ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3542,6 +3618,61 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
         (fun H1 : x = y ↦
           Exists.intro [] (Exists.intro l (by rw [H1]; rfl)))
         (fun H1 : x ∈ l ↦")
+
+(ert-deftest lean4-indent--newline-after-qualified-atom-head-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  obtain ⟨n, h⟩ :=\n"
+       "    Fintype.exists_ne_map_eq_of_card_lt\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-angle-literal-comma-line-indents-hanging-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  refine\n"
+       "    ⟨M.evalFrom s ((x.take m).take n), (x.take m).take n, (x.take m).drop n,\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                    ")))
+
+(ert-deftest lean4-indent--newline-after-where-field-structure-body-stays-at-field-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def reindex (g : σ ≃ σ') : DFA α σ ≃ DFA α σ' where\n"
+       "  toFun M := {\n"
+       "    step := fun s a => g (M.step (g.symm s) a)\n"
+       "    start := g M.start\n"
+       "    accept := g.symm ⁻¹' M.accept\n"
+       "  }\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-dot-qualified-head-indents-following-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem part_iff₁ {f : ℕ →. ℕ} : True := by\n"
+       "  part_iff.trans\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-classical-exact-indents-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  classical exact\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-projection-head-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  ((rfind <| f).bind\n"
+       "    (g h)).comp₁\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
 
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here

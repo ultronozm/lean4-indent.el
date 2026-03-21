@@ -832,9 +832,9 @@ unparenthesized application head, or nil otherwise."
          (not (lean4-indent--focus-dot-line-p trim))
          (not (lean4-indent--line-starts-with-closing-p trim))
          (cond
-          ((string-match-p "\\`[[:word:]_.']+\\'" trim)
+          ((string-match-p "\\`@?[[:word:]_.']+\\'" trim)
            'atom)
-          ((and (string-match-p "\\`[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
+          ((and (string-match-p "\\`@?[[:word:]_.']+\\(?:\\s-+.+\\)\\'" trim)
                 (not (lean4-indent--line-ends-with-comma-p trim))
                 (not (lean4-indent--line-ends-with-term-continuation-p trim)))
            'application)
@@ -956,6 +956,12 @@ argument on the next line is a natural deep continuation."
    "[)}⟩]\\.[[:word:]_']+\\_>\\s-+\\S-+\\s-*$"
    text))
 
+(defun lean4-indent--projection-head-line-p (text)
+  "Return non-nil when TEXT ends in a projection head like `...).foo'."
+  (string-match-p
+   "[)}⟩]\\.[[:word:]_']+\\s-*$"
+   text))
+
 (defun lean4-indent--bare-tactic-term-intro-line-p (text)
   "Return non-nil if TEXT is a bare `exact'/`refine'/`apply' line."
   (string-match-p "\\`[ \t]*\\(?:exact\\|refine\\|apply\\)\\_>[ \t]*\\'" text))
@@ -964,6 +970,29 @@ argument on the next line is a natural deep continuation."
   "Return the column of the leading '(' in a line starting with `⟨(`, or nil."
   (when (string-match "\\`[ \t]*⟨(" text)
     (1- (match-end 0))))
+
+(defun lean4-indent--inline-open-paren-argument-column (text)
+  "Return the first inline `(' column after real head text in TEXT.
+
+Leading whitespace and opening delimiters do not count as real head text."
+  (let ((i 0)
+        (len (length text))
+        (seen-real nil)
+        (found nil))
+    (while (and (< i len) (not found))
+      (let ((ch (aref text i)))
+        (cond
+         ((memq ch '(?\s ?\t)))
+         ((eq ch ?\()
+          (when seen-real
+            (setq found i)))
+         ((eq ch lean4-indent--char-left-angle)
+          (when seen-real
+            (setq found i)))
+         (t
+          (setq seen-real t))))
+      (setq i (1+ i)))
+    found))
 
 (defun lean4-indent--next-significant-line-top-level-anchor-p ()
   "Return non-nil if the next nonblank, noncomment line is a top-level anchor."
@@ -2707,6 +2736,23 @@ to cycle to shallower alternatives."
              (> prev-indent top-level-body-indent))
         (+ prev-indent step))
        ((and prev-pos
+             top-level-body-indent
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (= prev-indent (- top-level-body-indent step))
+             (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
+        (+ top-level-body-indent step))
+       ((and prev-pos
+             (= prev-indent 0)
+             (lean4-indent--starts-with-p prev-text "\\_<deriving\\_>"))
+        step)
+       ((and prev-pos
+             top-level-body-indent
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'where)
+             (= prev-indent top-level-body-indent)
+             (string-match-p "[])}⟩]\\s-*$" prev-text))
+        top-level-body-indent)
+       ((and prev-pos
              (lean4-indent--line-contains-calc-p prev-text)
              (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)
              (lean4-indent--inequality-rhs-column prev-text-no-comment))
@@ -2715,13 +2761,37 @@ to cycle to shallower alternatives."
         calc-relation-col)
        ((and prev-pos
              (string-match-p
-              "\\`[ \t]*\\(?:have\\|let\\)\\_>.*:\\s-*\\S-+"
+              "\\`[ \t]*\\(?:have\\|let\\|suffices\\)\\_>.*:\\s-*\\S-+"
               prev-text-no-comment)
              (not (string-match-p ":=" prev-text-no-comment)))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*\\_<from\\_>\\s-*\\'"
+              prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*\\(?:→\\|->\\)\\s-*\\'"
+              prev-text-no-comment)
+             (not (string-match-p ":=" prev-text-no-comment)))
+        (+ prev-indent (* 3 step)))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:haveI\\|letI\\)\\_>.*:=\\s-*\\S-+"
+              prev-text-no-comment))
+        prev-indent)
+       ((and prev-pos
              (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p "<|\\s-*$" prev-text-no-comment))
+        (if (string-match-p "\\`[ \t]*(+" prev-text-no-comment)
+            (+ prev-indent (* 3 step))
+          (+ prev-indent step)))
+       ((and prev-pos
+             (string-match-p "\\`[ \t]*<|\\s-+\\S-" prev-text-no-comment))
+        (+ prev-indent step))
        ((and prev-pos
              (string-match-p "]\\s-*$" prev-text-no-comment)
              (lean4-indent--inside-filter-upwards-bracket-block-p prev-pos))
@@ -2810,6 +2880,16 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
+             open-paren-pos-prev
+             (string-match-p "\\(?:↦\\|=>\\)\\s-*by\\s-*$"
+                             prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*classical\\_>.*\\_<\\(?:exact\\|refine\\|apply\\)\\_>[ \t]*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              anchor-pos
              (> prev-indent anchor-indent)
              (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
@@ -2841,8 +2921,24 @@ to cycle to shallower alternatives."
        ((and prev-pos
              anchor-pos
              (> prev-indent anchor-indent)
+             (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>"
+              anchor-text-no-comment))
+        (+ anchor-indent (* 2 step)))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
              (lean4-indent--operator-led-continuation-line-p prev-text-no-comment))
         prev-indent)
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (lean4-indent--line-ends-with-op-p prev-text-no-comment)
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
+        (+ prev-indent step))
        ((and prev-pos
              (lean4-indent--filter-upwards-line-p prev-text-no-comment))
         (if (and open-delimited-body-indent
@@ -2866,6 +2962,10 @@ to cycle to shallower alternatives."
                              prev-text-no-comment))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
+             (string-match-p "\\`[ \t]*·\\s-*exact\\_>\\s-*\\'"
+                             prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (string-match-p "\\`[ \t]*·\\s-*exact\\_>\\s-+\\S-"
                              prev-text-no-comment))
         (if (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
@@ -2873,21 +2973,82 @@ to cycle to shallower alternatives."
             (+ prev-indent (* 2 step))
           (+ prev-indent step)))
        ((and prev-pos
+             (string-match-p "\\`[ \t]*·\\s-*\\(?:refine\\|apply\\)\\_>\\s-+\\S-"
+                             prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (memq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
                    '(application)))
+        (+ prev-indent step))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (eq (lean4-indent--line-body-intro-kind anchor-text-no-comment)
+                 'coloneq)
+             (not (lean4-indent--line-top-level-declaration-head-p
+                   anchor-text-no-comment))
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'atom))
+        (+ prev-indent step))
+       ((and prev-pos
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'atom)
+             (string-match-p "\\." prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'atom)
+             (let ((case-fold-search nil))
+               (string-match-p
+                "\\`[ \t]*\\(?:@\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)\\|_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
+                prev-text-no-comment)))
         (+ prev-indent step))
        ((and prev-pos
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  'application)
              (let ((case-fold-search nil))
                (string-match-p
-                "\\`[ \t]*\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
+                "\\`[ \t]*\\(?:@\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)\\|_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
                 prev-text-no-comment)))
         (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--projection-head-line-p prev-text-no-comment)
+             (string-match-p "<|" prev-text-no-comment)
+             (not (lean4-indent--in-calc-block-p prev-pos)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--projection-head-line-p prev-text-no-comment)
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (eq (lean4-indent--line-application-head-kind anchor-text-no-comment)
+                 'atom))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--projection-head-line-p prev-text-no-comment)
+             (not (lean4-indent--in-calc-block-p prev-pos)))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--inline-open-paren-argument-column prev-text)
+             (not (lean4-indent--in-calc-block-p prev-pos))
+             (> prev-indent (max (or top-level-body-indent 0) anchor-indent))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-by-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment))
+             (not (string-match-p "\\(?:↦\\|=>\\)\\s-*by\\s-*$"
+                                  prev-text-no-comment)))
+        (max (+ prev-indent step)
+             (+ (lean4-indent--inline-open-paren-argument-column prev-text) step)))
        ((and prev-pos
              prev-delimited-sibling-indent
              (string-match-p "[])}⟩]\\s-*$" prev-text))
         prev-delimited-sibling-indent)
+       ((and prev-pos
+             open-delimited-body-indent
+             (lean4-indent--line-ends-with-comma-p prev-text-no-comment)
+             (lean4-indent--inline-open-paren-argument-column prev-text))
+        (max (+ open-delimited-body-indent step)
+             (+ (lean4-indent--inline-open-paren-argument-column prev-text) step)))
        ((and prev-pos
              open-delimited-body-indent
              (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
@@ -2900,7 +3061,7 @@ to cycle to shallower alternatives."
        ((and prev-pos
              top-level-body-indent
              (eq (plist-get top-level-context :kind) 'declaration)
-             (eq top-level-body-intro-kind 'coloneq)
+             (memq top-level-body-intro-kind '(coloneq where))
              (= prev-indent top-level-body-indent)
              (string-match-p "[])}⟩]\\s-*$" prev-text))
         top-level-body-indent)
