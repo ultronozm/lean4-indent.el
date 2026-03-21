@@ -3561,6 +3561,26 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-bullet-exact-parenthesized-projection-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "instance [μ.IsMulLeftInvariant] : ErgodicSMul G G μ := by\n"
+       "  refine ⟨fun {s} hsm hs ↦ ?_⟩\n"
+       "  suffices (∃ᵐ x ∂μ, x ∈ s) → ∀ᵐ x ∂μ, x ∈ s by\n"
+       "    simp only [eventuallyConst_set, ← not_frequently]\n"
+       "    exact or_not_of_imp this\n"
+       "  intro hμs\n"
+       "  obtain ⟨a, has, ha⟩ : ∃ a ∈ s, ∀ᵐ b ∂μ, (b * a ∈ s ↔ a ∈ s) := by\n"
+       "    refine (hμs.and_eventually ?_).exists\n"
+       "    rw [ae_ae_comm]\n"
+       "    · exact ae_of_all _ fun b ↦ (hs b).mem_iff\n"
+       "    · exact ((hsm.preimage <| measurable_snd.mul measurable_fst).mem.iff\n"
+       "        (hsm.preimage measurable_fst).mem).setOf\n")
+    (goto-char (point-min))
+    (forward-line 9)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
 (ert-deftest lean4-indent--newline-after-pipe-left-qualified-head-indents-following-args ()
   (lean4-test-with-indent-buffer
       (concat

@@ -3749,6 +3749,11 @@ to cycle to shallower alternatives."
                              prev-text-no-comment))
         (if (or (eq (lean4-indent--tactic-term-tail-head-kind prev-text-no-comment)
                     'application)
+                (and (lean4-indent--line-opens-paren-p prev-pos)
+                     (not (string-match-p "[])}⟩]\\s-*$" prev-text))
+                     (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+                     (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+                     (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
                 (let ((case-fold-search nil))
                   (string-match-p
                    "\\`[ \t]*·\\s-*exact\\_>\\s-+\\(?:@\\(?:_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)\\|_root_\\.\\|[[:upper:]][[:word:]_'.]*\\(?:\\.\\|\\_>\\)\\)"
