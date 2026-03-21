@@ -3767,6 +3767,10 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (string-match-p "\\`[ \t]*\\(?:exact\\|refine\\)\\_>\\s-+\\S-" prev-text-no-comment))
         (cond
+         ((and (string-match-p "\\`[ \t]*refine\\_>.*⟨.*[,،]\\s-*$"
+                               prev-text-no-comment)
+               (not (lean4-indent--line-ends-with-op-p prev-text-no-comment)))
+          (+ prev-indent (* 2 step)))
          ((and (string-match-p "\\`[ \t]*refine\\_>" prev-text-no-comment)
                open-delimited-body-indent
                (eq (lean4-indent--line-application-head-kind prev-text-no-comment)

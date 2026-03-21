@@ -3592,6 +3592,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-inline-refine-angle-comma-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem preErgodic_conjugate_iff {e : α ≃ᵐ β} (h : MeasurePreserving e μ μ') :\n"
+       "    PreErgodic (e ∘ f ∘ e.symm) μ' ↔ PreErgodic f μ := by\n"
+       "  refine ⟨fun hf => preErgodic_of_preErgodic_semiconj (h.symm e) hf ?_,\n"
+       "      fun hf => preErgodic_of_preErgodic_semiconj h hf ?_⟩\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-obtain-inline-application-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
