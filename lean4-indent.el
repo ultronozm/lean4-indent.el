@@ -97,6 +97,18 @@ current line."
 (defvar lean4-indent--region-line-contexts nil
   "Dynamically bound per-line context cache for `lean4-indent-region-function'.")
 
+(defvar-local lean4-indent--buffer-context-cache-tick nil
+  "Buffer modification tick for live indentation caches.")
+
+(defvar-local lean4-indent--buffer-top-level-contexts nil
+  "Buffer-local top-level context cache for live indentation.")
+
+(defvar-local lean4-indent--buffer-line-contexts nil
+  "Buffer-local per-line context cache for live indentation.")
+
+(defvar-local lean4-indent--building-buffer-context-caches nil
+  "Non-nil while live indentation caches are being rebuilt.")
+
 (defvar lean4-indent--preserve-tactic-region-indentation nil
   "Dynamically non-nil when region indentation should preserve tactic layout.")
 
@@ -466,6 +478,25 @@ current line."
   "Return non-nil if TEXT starts a `filter_upwards` line."
   (string-match-p "\\`[ \t]*filter_upwards\\_>" text))
 
+(defun lean4-indent--inside-filter-upwards-bracket-block-p (start-pos)
+  "Return non-nil if START-POS is within a multiline `filter_upwards [...]` block."
+  (save-excursion
+    (goto-char start-pos)
+    (let ((start-indent (current-indentation))
+          (found nil))
+      (while (and (not found) (not (bobp)))
+        (forward-line -1)
+        (let ((text (lean4-indent--line-text (point)))
+              (indent (lean4-indent--line-indent (point))))
+          (unless (or (lean4-indent--line-blank-p text)
+                      (lean4-indent--comment-line-p (point)))
+            (when (and (< indent start-indent)
+                       (lean4-indent--filter-upwards-line-p text))
+              (setq found t))
+            (when (< indent start-indent)
+              (setq start-indent indent)))))
+      found)))
+
 (defun lean4-indent--operator-led-continuation-line-p (text)
   "Return non-nil if TEXT starts with a leading operator continuation."
   (string-match-p "\\`[ \t]*[+-]\\s-" text))
@@ -494,6 +525,16 @@ the current line."
 (defun lean4-indent--inline-coloneq-by-line-p (text)
   "Return non-nil if TEXT contains an inline `:= by` body with following text."
   (string-match-p ":=\\s-*\\_<by\\_>\\s-+\\S-" text))
+
+(defun lean4-indent--inline-coloneq-by-tail (text)
+  "Return the trimmed inline proof tail after `:= by` in TEXT, or nil."
+  (when (string-match ":=\\s-*\\_<by\\_>\\s-*\\(.*\\)\\'" text)
+    (string-trim (match-string 1 text))))
+
+(defun lean4-indent--inline-coloneq-by-tail-column (text)
+  "Return the starting column of the inline proof tail after `:= by`, or nil."
+  (when (string-match ":=\\s-*\\_<by\\_>\\s-*\\(\\S-\\)" text)
+    (match-beginning 1)))
 
 (defun lean4-indent--line-ends-with-term-continuation-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-term-continuation))
@@ -852,6 +893,54 @@ tail."
   "Return the starting column of an inline `calc` expression in TEXT, or nil."
   (when (string-match "\\`[ \t]*calc\\s-+\\S-" text)
     (1- (match-end 0))))
+
+(defun lean4-indent--line-contains-calc-p (text)
+  "Return non-nil if TEXT contains a real `calc` opener."
+  (string-match-p "\\_<calc\\_>" text))
+
+(defun lean4-indent--calc-relation-rhs-column (text)
+  "Return the starting column of the RHS on a calc relation line TEXT, or nil."
+  (when (string-match
+         "\\`[ \t]*_\\s-*\\(?:=ᶠ\\[\\|=O\\[\\|=o\\[\\|=Θ\\[\\|~\\[\\|≤\\|≥\\|<\\|>\\|=\\)\\s-*\\S-"
+         text)
+    (1- (match-end 0))))
+
+(defun lean4-indent--calc-relation-simple-rhs-p (text)
+  "Return non-nil if TEXT has a simple one-token RHS on a calc relation line."
+  (when (string-match
+         "\\`[ \t]*_\\s-*\\(?:=ᶠ\\[\\|=O\\[\\|=o\\[\\|=Θ\\[\\|~\\[\\|≤\\|≥\\|<\\|>\\|=\\)\\s-*\\([^ \t].*?\\)\\s-*:=\\s-*\\_<by\\_>\\s-*\\'"
+         text)
+    (not (string-match-p "[ \t]" (match-string 1 text)))))
+
+(defun lean4-indent--inequality-rhs-column (text)
+  "Return the starting column of the RHS after the first inequality in TEXT."
+  (let ((search-pos 0)
+        (found nil))
+    (while (and (not found)
+                (string-match "\\(?:≤\\|≥\\|<\\|>\\)\\s-*\\S-" text search-pos))
+      (let ((beg (match-beginning 0)))
+        (if (and (> beg 0)
+                 (eq (aref text (1- beg)) ?:))
+            (setq search-pos (1+ beg))
+          (setq found (1- (match-end 0))))))
+    found))
+
+(defun lean4-indent--inline-coloneq-by-starter-p (text)
+  "Return non-nil if TEXT has an inline `:= by` proof tail that opens more proof."
+  (let ((tail (lean4-indent--inline-coloneq-by-tail text)))
+    (and tail
+         (not (string-empty-p tail))
+         (not (string-match-p "\\(?:;\\|<;>\\)" tail))
+         (string-match-p
+          "\\`\\(?:gcongr\\|rw\\|simp_rw\\|refine\\|apply\\|exact_mod_cast\\|show\\|have\\|let\\|constructor\\|aesop\\|omega\\|linarith\\|positivity\\|calc\\)\\_>"
+          tail))))
+
+(defun lean4-indent--inline-coloneq-by-complete-p (text)
+  "Return non-nil if TEXT has an inline `:= by` body that looks complete."
+  (let ((tail (lean4-indent--inline-coloneq-by-tail text)))
+    (and tail
+         (not (string-empty-p tail))
+         (not (lean4-indent--inline-coloneq-by-starter-p text)))))
 
 (defun lean4-indent--projection-application-tail-line-p (text)
   "Return non-nil when TEXT ends in a continued projection application.
@@ -1228,7 +1317,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
               (unless (or (lean4-indent--line-blank-p text)
                           (lean4-indent--comment-line-p (point)))
                 (when (and (< indent start-indent)
-                           (lean4-indent--starts-with-p text lean4-indent--re-starts-calc))
+                           (lean4-indent--line-contains-calc-p text))
                   (setq found t))
                 (when (< indent start-indent)
                   (setq start-indent indent)))))
@@ -1250,7 +1339,7 @@ Only consider lines with indentation <= LIMIT-INDENT when LIMIT-INDENT is non-ni
                   (indent (lean4-indent--line-indent (point))))
               (cond
                ((lean4-indent--line-blank-p text) nil)
-               ((lean4-indent--starts-with-p text lean4-indent--re-starts-calc)
+               ((lean4-indent--line-contains-calc-p text)
                 (setq done t))
                ((and (<= indent step-indent)
                      (or (lean4-indent--line-starts-with-calc-step-p text)
@@ -1356,11 +1445,12 @@ not inside such a declaration."
 (defun lean4-indent--region-line-context (pos)
   "Return cached per-line context for POS, or nil when unavailable."
   (and pos
-       lean4-indent--region-line-contexts
-       (let ((index (1- (line-number-at-pos pos t))))
-         (and (>= index 0)
-              (< index (length lean4-indent--region-line-contexts))
-              (aref lean4-indent--region-line-contexts index)))))
+       (let ((contexts lean4-indent--region-line-contexts))
+         (and contexts
+              (let ((index (1- (line-number-at-pos pos t))))
+                (and (>= index 0)
+                     (< index (length contexts))
+                     (aref contexts index)))))))
 
 (defun lean4-indent--build-top-level-context-cache (step)
   "Build a per-line top-level context cache using indentation STEP."
@@ -1504,10 +1594,26 @@ not inside such a declaration."
                 (push (cons 'section indent) block-stack))
               (when (lean4-indent--starts-with-p text lean4-indent--re-starts-namespace)
                 (push (cons 'namespace indent) block-stack))
-              (when (lean4-indent--starts-with-p text lean4-indent--re-starts-calc)
+              (when (lean4-indent--line-contains-calc-p text)
                 (push (list :indent indent :last-step-indent nil) calc-stack)))))
           (forward-line 1)))
       contexts)))
+
+(defun lean4-indent--ensure-buffer-context-caches ()
+  "Refresh buffer-local indentation caches when the buffer changed."
+  (let ((tick (buffer-chars-modified-tick)))
+    (unless (and lean4-indent--buffer-context-cache-tick
+                 (= lean4-indent--buffer-context-cache-tick tick)
+                 lean4-indent--buffer-line-contexts
+                 lean4-indent--buffer-top-level-contexts)
+      (let* ((lean4-indent--building-buffer-context-caches t)
+             (line-contexts (lean4-indent--build-region-line-context-cache))
+             (top-level-contexts
+              (let ((lean4-indent--region-line-contexts line-contexts))
+                (lean4-indent--build-top-level-context-cache lean4-indent-offset))))
+        (setq lean4-indent--buffer-line-contexts line-contexts
+              lean4-indent--buffer-top-level-contexts top-level-contexts
+              lean4-indent--buffer-context-cache-tick tick)))))
 
 (defun lean4-indent--find-end-anchor-indent (start-pos)
   "Return indentation for an `end` line based on the nearest opener."
@@ -2525,57 +2631,60 @@ This is used for blank-line indentation. It tries to choose the deepest
 plausible indentation in a few common completed-code situations, leaving `TAB'
 to cycle to shallower alternatives."
   (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
-    (let* ((step lean4-indent-offset)
-           (prev-pos (lean4-indent--prev-nonblank))
-           (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
-           (prev-text-no-comment
-            (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
-                (lean4-indent--line-text-no-comment prev-pos)
-              ""))
-           (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
-           (top-level-context (and prev-pos
-                                   (lean4-indent--top-level-context prev-pos step)))
-           (top-level-body-indent (plist-get top-level-context :body-indent))
-           (top-level-body-intro-kind (plist-get top-level-context :body-intro-kind))
-           (anchor (and prev-pos
-                        (lean4-indent--find-anchor prev-pos prev-indent)))
-           (anchor-pos (car-safe anchor))
-           (anchor-indent (if anchor (cdr anchor) 0))
-           (anchor-text (if anchor-pos (lean4-indent--line-text anchor-pos) ""))
-           (anchor-text-no-comment
-            (if (and anchor-pos (not (lean4-indent--comment-line-p anchor-pos)))
-                (lean4-indent--line-text-no-comment anchor-pos)
-              ""))
-           (open-paren-pos (lean4-indent--open-paren-pos (point)))
-           (open-paren-col (and open-paren-pos
-                                (save-excursion
-                                  (goto-char open-paren-pos)
-                                  (current-column))))
-           (open-delimited-body-indent
-            (and open-paren-pos open-paren-col
-                 (lean4-indent--open-delimited-body-indent
-                  open-paren-pos open-paren-col step)))
-           (calc-relation-col
-            (and prev-pos
-                 (lean4-indent--calc-relation-column prev-text-no-comment)))
-           (calc-inline-expression-col
-            (and prev-pos
-                 (lean4-indent--calc-inline-expression-column prev-text-no-comment)))
-           (prev-delimited-sibling-indent
-            (and prev-pos
-                 (string-match-p "[])}⟩]\\s-*$" prev-text)
-                 (lean4-indent--find-prev-delimited-sibling-indent
-                  prev-pos prev-indent)))
-           (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
-           (open-paren-prefix-has-real-text
-            (and open-paren-pos-prev
-                 (save-excursion
-                   (goto-char open-paren-pos-prev)
-                   (string-match-p
-                    "[^ \t(\\[{⟨]"
-                    (buffer-substring-no-properties
-                     (line-beginning-position) open-paren-pos-prev))))))
-      (cond
+    (lean4-indent--ensure-buffer-context-caches)
+    (let ((lean4-indent--region-line-contexts lean4-indent--buffer-line-contexts)
+          (lean4-indent--region-top-level-contexts lean4-indent--buffer-top-level-contexts))
+      (let* ((step lean4-indent-offset)
+             (prev-pos (lean4-indent--prev-nonblank))
+             (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
+             (prev-text-no-comment
+              (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
+                  (lean4-indent--line-text-no-comment prev-pos)
+                ""))
+             (prev-indent (if prev-pos (lean4-indent--line-indent prev-pos) 0))
+             (top-level-context (and prev-pos
+                                     (lean4-indent--top-level-context prev-pos step)))
+             (top-level-body-indent (plist-get top-level-context :body-indent))
+             (top-level-body-intro-kind (plist-get top-level-context :body-intro-kind))
+             (anchor (and prev-pos
+                          (lean4-indent--find-anchor prev-pos prev-indent)))
+             (anchor-pos (car-safe anchor))
+             (anchor-indent (if anchor (cdr anchor) 0))
+             (anchor-text (if anchor-pos (lean4-indent--line-text anchor-pos) ""))
+             (anchor-text-no-comment
+              (if (and anchor-pos (not (lean4-indent--comment-line-p anchor-pos)))
+                  (lean4-indent--line-text-no-comment anchor-pos)
+                ""))
+             (open-paren-pos (lean4-indent--open-paren-pos (point)))
+             (open-paren-col (and open-paren-pos
+                                  (save-excursion
+                                    (goto-char open-paren-pos)
+                                    (current-column))))
+             (open-delimited-body-indent
+              (and open-paren-pos open-paren-col
+                   (lean4-indent--open-delimited-body-indent
+                    open-paren-pos open-paren-col step)))
+             (calc-relation-col
+              (and prev-pos
+                   (lean4-indent--calc-relation-column prev-text-no-comment)))
+             (calc-inline-expression-col
+              (and prev-pos
+                   (lean4-indent--calc-inline-expression-column prev-text-no-comment)))
+             (prev-delimited-sibling-indent
+              (and prev-pos
+                   (string-match-p "[])}⟩]\\s-*$" prev-text)
+                   (lean4-indent--find-prev-delimited-sibling-indent
+                    prev-pos prev-indent)))
+             (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
+             (open-paren-prefix-has-real-text
+              (and open-paren-pos-prev
+                   (save-excursion
+                     (goto-char open-paren-pos-prev)
+                     (string-match-p
+                      "[^ \t(\\[{⟨]"
+                      (buffer-substring-no-properties
+                       (line-beginning-position) open-paren-pos-prev))))))
+        (cond
        ((and prev-pos
              top-level-body-indent
              (eq (plist-get top-level-context :kind) 'declaration)
@@ -2588,6 +2697,11 @@ to cycle to shallower alternatives."
              (eq top-level-body-intro-kind 'colon)
              (> prev-indent top-level-body-indent))
         (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--line-contains-calc-p prev-text)
+             (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)
+             (lean4-indent--inequality-rhs-column prev-text-no-comment))
+        (1- (lean4-indent--inequality-rhs-column prev-text-no-comment)))
        (calc-relation-col
         calc-relation-col)
        ((and prev-pos
@@ -2599,6 +2713,62 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
        (+ prev-indent step))
+       ((and prev-pos
+             (string-match-p "]\\s-*$" prev-text-no-comment)
+             (lean4-indent--inside-filter-upwards-bracket-block-p prev-pos))
+        (+ prev-indent step))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (or (lean4-indent--line-starts-with-calc-step-p prev-text)
+                 (lean4-indent--line-starts-with-relop-p prev-text))
+             (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment))
+        (if (lean4-indent--calc-relation-simple-rhs-p prev-text-no-comment)
+            (+ prev-indent (* 3 step))
+          (or (and (lean4-indent--calc-relation-rhs-column prev-text-no-comment)
+                   (+ (lean4-indent--calc-relation-rhs-column prev-text-no-comment)
+                      (* 3 step)))
+              (+ prev-indent (* 2 step)))))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (or (lean4-indent--line-starts-with-calc-step-p prev-text)
+                 (lean4-indent--line-starts-with-relop-p prev-text))
+             (lean4-indent--inline-coloneq-by-complete-p prev-text-no-comment))
+        prev-indent)
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (or (lean4-indent--line-starts-with-calc-step-p prev-text)
+                 (lean4-indent--line-starts-with-relop-p prev-text))
+             (lean4-indent--inline-coloneq-by-starter-p prev-text-no-comment))
+        (or (lean4-indent--inline-coloneq-by-tail-column prev-text-no-comment)
+            (and (lean4-indent--calc-relation-rhs-column prev-text-no-comment)
+                 (+ (lean4-indent--calc-relation-rhs-column prev-text-no-comment)
+                    (* 3 step)))
+            (+ prev-indent (* 2 step))))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (not (lean4-indent--line-starts-with-relop-p prev-text))
+             (not (lean4-indent--line-starts-with-calc-step-p prev-text))
+             (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment)
+             (lean4-indent--inequality-rhs-column prev-text-no-comment))
+        (+ (lean4-indent--inequality-rhs-column prev-text-no-comment) step))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (not (lean4-indent--line-starts-with-relop-p prev-text))
+             (not (lean4-indent--line-starts-with-calc-step-p prev-text))
+             (lean4-indent--line-ends-with-coloneq-by-p prev-text-no-comment))
+        (let ((body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step)))
+          (if body-indent
+              (+ body-indent step)
+            (+ prev-indent (* 2 step)))))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             (not (lean4-indent--line-starts-with-relop-p prev-text))
+             (not (lean4-indent--line-starts-with-calc-step-p prev-text))
+             (lean4-indent--inline-coloneq-by-complete-p prev-text-no-comment))
+        (let ((body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step)))
+          (if body-indent
+              (+ body-indent step)
+            (+ prev-indent step))))
        ((and prev-pos
              (lean4-indent--line-ends-with-by-p prev-text-no-comment)
              (not (string-match-p "<|\\s-*\\_<by\\_>\\s-*$"
@@ -2796,7 +2966,7 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
         (+ prev-indent step))
-       (t nil)))))
+         (t nil))))))
 
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."

@@ -3165,6 +3165,33 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "            ")))
 
+(ert-deftest lean4-indent--newline-after-inline-calc-inequality-by-indents-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "          calc (0 : ℝ) ≤ (2 : ℝ) ^ n * max n₀ 2 := by\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                        ")))
+
+(ert-deftest lean4-indent--newline-after-inline-calc-gcongr-indents-bullets ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  calc\n"
+       "      _ ≥ c₂ * f x + c₄ * g x := by gcongr\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "                                    ")))
+
+(ert-deftest lean4-indent--newline-after-filter-upwards-bracket-block-indents-with ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  filter_upwards [eventually_gt_atTop 0,\n"
+       "      hfnew, hf_nonneg,\n"
+       "      (tendsto_id.const_mul_atTop hb.1).eventually_forall_ge_atTop hf_nonneg]\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "        ")))
+
 (ert-deftest lean4-indent--newline-after-operator-led-continuation-keeps-indent ()
   (lean4-test-with-indent-buffer
       (concat
