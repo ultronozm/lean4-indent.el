@@ -4001,6 +4001,26 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-top-level-where-body-head-opens-named-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "instance : LawfulMonad (ContT r m) := LawfulMonad.mk'\n"
+       "  (id_map := by intros; rfl)\n")
+    (goto-char (point-min))
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
+(ert-deftest lean4-indent--newline-after-inline-semicolon-simp-only-list-keeps-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "instance {ρ} [Monad m] [MonadCont m] [LawfulMonadCont m] : LawfulMonadCont (ReaderT ρ m) where\n"
+       "  callCC_bind_right := by intros; simp only [callCC, ReaderT.callCC, ReaderT.run_bind,\n"
+       "                                    callCC_bind_right]; ext; rfl\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 36)))
+
 (ert-deftest lean4-indent--newline-after-wrapped-declaration-colon-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat

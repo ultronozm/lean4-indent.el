@@ -555,6 +555,28 @@ the current line."
   (when (string-match ":=\\s-*\\_<by\\_>\\s-*\\(\\S-\\)" text)
     (match-beginning 1)))
 
+(defun lean4-indent--semicolon-bracket-tactic-column (text)
+  "Return the start column of a bracketed tactic after `;' in TEXT, or nil.
+
+This handles inline proof tails such as `intros; simp only [...]`."
+  (when (string-match
+         ";\\s-*\\(\\(?:simp\\s-+only\\)\\|rw\\|simp_rw\\)\\_>.*\\[[^]]*\\'"
+         text)
+    (match-beginning 1)))
+
+(defun lean4-indent--simple-bare-head-after-outer-coloneq-p (text)
+  "Return non-nil when TEXT ends with a single bare head after an outer `:='.
+
+This is the shape that typically opens named arguments on the following line,
+for example `:= LawfulMonad.mk''.
+
+It deliberately excludes already-complete simple terms like `:= 2' and wrapped
+applications like `:= Foo bar', which should not be forced one step deeper on
+a fresh newline."
+  (string-match-p
+   ":=\\s-*[@[:alpha:]_][^ \t\n]*\\s-*\\'"
+   text))
+
 (defun lean4-indent--line-ends-with-term-continuation-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-term-continuation))
 
@@ -2930,6 +2952,33 @@ to cycle to shallower alternatives."
              (lean4-indent--line-ends-with-colon-p prev-text-no-comment)
              (= prev-leading-binder-groups 1))
         (+ prev-indent step))
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (lean4-indent--semicolon-bracket-tactic-column prev-text-no-comment)
+             (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+        (+ (lean4-indent--semicolon-bracket-tactic-column prev-text-no-comment)
+           step))
+       ((and prev-pos
+             (lean4-indent--line-top-level-declaration-head-p prev-text-no-comment)
+             prev-line-has-outer-coloneq
+             (lean4-indent--simple-bare-head-after-outer-coloneq-p
+              prev-text-no-comment)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'where)
+             (< prev-indent top-level-body-indent)
+             (memq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                   '(atom application))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        top-level-body-indent)
        ((and prev-pos
              top-level-context
              (eq (plist-get top-level-context :kind) 'declaration)
