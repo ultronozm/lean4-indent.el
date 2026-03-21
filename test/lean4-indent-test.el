@@ -3107,6 +3107,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-wrapped-rcases-line-allows-deeper-with-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  rcases eventually_closure_subset_of_isCompact_absorbing_of_isOpen_of_omegaLimit_subset f ϕ s hc₁\n"
+       "      hc₂ hn₁ hn₂ with\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-proof-with-line-indents-its-body ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3626,6 +3637,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "      (IsUnifLocDoublingMeasure.ae_tendsto_measure_inter_div μ s 1)\n")
     (goto-char (point-min))
     (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
+(ert-deftest lean4-indent--newline-after-shallow-coloneq-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have hμ_diff : μ (f ⁻¹' s \\ s) = μ (s \\ f ⁻¹' s) :=\n"
+       "    measure_diff_symm (hfμ.measurable hsm).nullMeasurableSet hsm.nullMeasurableSet\n"
+       "      (hfμ.measure_preimage hsm.nullMeasurableSet) (by finiteness)\n")
+    (goto-char (point-min))
+    (forward-line 2)
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 6)))
 
@@ -4745,6 +4768,19 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
        "  part_iff.trans\n")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "    ")))
+
+(ert-deftest lean4-indent--newline-after-local-coloneq-qualified-head-indents-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem mem_periodicPts_iff_isPeriodicPt_factorial_card [Fintype α] :\n"
+       "    x ∈ periodicPts f ↔ IsPeriodicPt f (card α)! x where\n"
+       "  mp := isPeriodicPt_factorial_card_of_mem_periodicPts\n"
+       "  mpr h := minimalPeriod_pos_iff_mem_periodicPts.mp\n"
+       "    (IsPeriodicPt.minimalPeriod_pos (Nat.factorial_pos _) h)\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
 
 (ert-deftest lean4-indent--newline-after-classical-exact-indents-proof-body ()
   (lean4-test-with-indent-buffer

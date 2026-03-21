@@ -577,7 +577,7 @@ This handles inline proof tails such as `intros; simp only [...]`."
          text)
     (match-beginning 1)))
 
-(defun lean4-indent--simple-bare-head-after-outer-coloneq-p (text)
+(defun lean4-indent--simple-bare-head-after-outer-coloneq-p (text &optional pos)
   "Return non-nil when TEXT ends with a single bare head after an outer `:='.
 
 This is the shape that typically opens named arguments on the following line,
@@ -585,10 +585,35 @@ for example `:= LawfulMonad.mk''.
 
 It deliberately excludes already-complete simple terms like `:= 2' and wrapped
 applications like `:= Foo bar', which should not be forced one step deeper on
-a fresh newline."
-  (string-match-p
-   ":=\\s-*[@[:alpha:]_][^ \t\n]*\\s-*\\'"
-   text))
+a fresh newline.
+
+When POS is non-nil, only a delimiter-depth-0 `:=' on the corresponding line
+counts as the outer `:='."
+  (let ((tail text))
+    (when pos
+      (save-excursion
+        (goto-char pos)
+        (let ((end (line-end-position))
+              (outer-coloneq nil))
+          (while (and (< (point) end) (not outer-coloneq))
+            (let* ((ppss (syntax-ppss (point)))
+                   (depth (car ppss))
+                   (in-str (nth 3 ppss))
+                   (in-com (nth 4 ppss)))
+              (when (and (= depth 0)
+                         (not in-str)
+                         (not in-com)
+                         (eq (char-after) ?:)
+                         (eq (char-after (1+ (point))) ?=))
+                (setq outer-coloneq (point))))
+            (forward-char 1))
+          (setq tail (and outer-coloneq
+                          (buffer-substring-no-properties
+                           (+ outer-coloneq 2) end))))))
+    (and tail
+         (string-match-p
+          "\\`\\s-*[@[:alpha:]_][^ \t\n]*\\s-*\\'"
+          tail))))
 
 (defun lean4-indent--application-continues-after-inline-fun-p (text)
   "Return non-nil when TEXT keeps applying arguments after an inline `fun` term.
@@ -2991,7 +3016,16 @@ to cycle to shallower alternatives."
              (lean4-indent--line-top-level-declaration-head-p prev-text-no-comment)
              prev-line-has-outer-coloneq
              (lean4-indent--simple-bare-head-after-outer-coloneq-p
-              prev-text-no-comment)
+              prev-text-no-comment prev-pos)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             prev-line-has-outer-coloneq
+             (lean4-indent--simple-bare-head-after-outer-coloneq-p
+              prev-text-no-comment prev-pos)
+             (not (lean4-indent--line-top-level-declaration-head-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
@@ -3666,6 +3700,18 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (lean4-indent--proof-with-continuation-head-line-p
               prev-text-no-comment)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (not (string-match-p
+                   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:cases\\|rcases\\|obtain\\)\\_>\\s-+\\S-+\\s-*\\'"
+                   prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (lean4-indent--proof-with-continuation-head-line-p
+              prev-text-no-comment)
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
@@ -3716,6 +3762,17 @@ to cycle to shallower alternatives."
              (memq (lean4-indent--line-body-intro-kind prevprev-text-no-comment)
                    '(coloneq equals))
              (> prevprev-indent prev-indent)
+             (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
+                 'application)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             prevprev-pos
+             (memq (lean4-indent--line-body-intro-kind prevprev-text-no-comment)
+                   '(coloneq equals))
+             (> prev-indent prevprev-indent)
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  'application)
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
