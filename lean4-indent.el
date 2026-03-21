@@ -474,6 +474,10 @@ current line."
   "Return non-nil if TEXT starts a proof-local `with` continuation line."
   (string-match-p "\\`[ \t]*with\\_>" text))
 
+(defun lean4-indent--proof-at-target-line-p (text)
+  "Return non-nil if TEXT is a standalone tactic target clause like `at h ⊢`."
+  (string-match-p "\\`[ \t]*at\\_>.*⊢\\s-*\\'" text))
+
 (defun lean4-indent--filter-upwards-line-p (text)
   "Return non-nil if TEXT starts a `filter_upwards` line."
   (string-match-p "\\`[ \t]*filter_upwards\\_>" text))
@@ -3134,6 +3138,11 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (lean4-indent--line-ends-with-with-p prev-pos))
         (+ prev-indent step))
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (lean4-indent--proof-at-target-line-p prev-text-no-comment))
+        anchor-indent)
        ((and prev-pos
              (lean4-indent--proof-with-line-p prev-text-no-comment))
         (+ prev-indent step))

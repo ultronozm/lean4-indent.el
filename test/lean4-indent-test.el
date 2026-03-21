@@ -3764,6 +3764,19 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-standalone-at-target-line-dedents-to-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  | write f q IH =>\n"
+       "      simp only [Finset.mem_image, Finset.mem_union, Finset.mem_univ, true_and]\n"
+       "        at hw ⊢\n"
+       "      replace IH := IH hs fun q hq ↦ hw q (Or.inr hq)\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-bare-head-in-equation-branch-indents-first-arg ()
   (lean4-test-with-indent-buffer
       (concat
