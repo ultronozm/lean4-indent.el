@@ -3369,10 +3369,21 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
       (concat
        "theorem star_rmatch_iff (P : RegularExpression α) :\n"
        "    ∀ x : List α, (star P).rmatch x ↔ ∃ S : List (List α), x\n"
-       "          = S.flatten ∧ ∀ t ∈ S, t ≠ [] ∧ P.rmatch t :=\n")
+          "          = S.flatten ∧ ∀ t ∈ S, t ≠ [] ∧ P.rmatch t :=\n")
     (forward-line 1)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-paren-led-theorem-proposition-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem decode_prod_val (n : ℕ) :\n"
+       "    (@decode (α × β) _ n : Option (α × β))\n"
+       "      = (decode n.unpair.1).bind fun a => (decode n.unpair.2).map <| Prod.mk a := by\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
 
 (ert-deftest lean4-indent--newline-after-bare-top-level-deriving-indents-classes ()
   (lean4-test-with-indent-buffer

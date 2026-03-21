@@ -3338,6 +3338,17 @@ to cycle to shallower alternatives."
              top-level-body-indent
              (eq (plist-get top-level-context :kind) 'declaration)
              (eq top-level-body-intro-kind 'colon)
+             (= prev-indent top-level-body-indent)
+             (lean4-indent--line-starts-with-paren-p prev-text-no-comment)
+             (string-match-p "\\S-" prev-text-no-comment)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent step))
+       ((and prev-pos
+             top-level-body-indent
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'colon)
              (> prev-indent top-level-body-indent)
              anchor-pos
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
@@ -4211,8 +4222,9 @@ already-closed parenthesized argument."
                (not (and top-level-context
                          (eq (plist-get top-level-context :kind) 'declaration)
                          top-level-body-indent
-                         (> prev-indent top-level-body-indent)
-                         (not top-level-body-intro-kind)))
+                         (or (eq top-level-body-intro-kind 'colon)
+                             (and (> prev-indent top-level-body-indent)
+                                  (not top-level-body-intro-kind)))))
                (not (lean4-indent--projection-head-line-p prev-text-no-comment))
                (not (lean4-indent--projection-application-tail-line-p prev-text-no-comment))
                (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
