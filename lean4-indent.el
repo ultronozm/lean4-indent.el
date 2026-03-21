@@ -577,6 +577,14 @@ a fresh newline."
    ":=\\s-*[@[:alpha:]_][^ \t\n]*\\s-*\\'"
    text))
 
+(defun lean4-indent--application-continues-after-inline-fun-p (text)
+  "Return non-nil when TEXT keeps applying arguments after an inline `fun` term.
+
+This distinguishes lines like `f (fun x => ...) a` from lines whose body ends
+at the `fun` term itself."
+  (and (string-match-p "\\_<fun\\_>" text)
+       (string-match-p "[])}⟩]\\s-+\\S-" text)))
+
 (defun lean4-indent--line-ends-with-term-continuation-p (text)
   (lean4-indent--ends-with-p text lean4-indent--re-ends-term-continuation))
 
@@ -3000,6 +3008,17 @@ to cycle to shallower alternatives."
              (eq top-level-body-intro-kind 'coloneq)
              top-level-body-indent
              (> prev-indent top-level-body-indent)
+             top-level-body-intro-pos
+             (= prev-pos top-level-body-intro-pos)
+             (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment)
+             (> prev-leading-binder-groups 0))
+        prev-indent)
+       ((and prev-pos
+             top-level-context
+             (eq (plist-get top-level-context :kind) 'declaration)
+             (eq top-level-body-intro-kind 'coloneq)
+             top-level-body-indent
+             (> prev-indent top-level-body-indent)
              (eq (lean4-indent--line-body-intro-kind prev-text-no-comment) 'coloneq)
              (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment)
              (lean4-indent--simple-parenthesized-application-before-coloneq-p
@@ -3252,7 +3271,9 @@ to cycle to shallower alternatives."
              (= prev-indent top-level-body-indent)
              (eq (lean4-indent--line-application-head-kind prev-text-no-comment)
                  'application)
-             (not (string-match-p "\\_<fun\\_>" prev-text-no-comment)))
+             (or (not (string-match-p "\\_<fun\\_>" prev-text-no-comment))
+                 (lean4-indent--application-continues-after-inline-fun-p
+                  prev-text-no-comment)))
         (+ prev-indent step))
        ((and prev-pos
              top-level-body-indent

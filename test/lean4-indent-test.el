@@ -3315,6 +3315,19 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "    ")))
 
+(ert-deftest lean4-indent--newline-after-wrapped-binder-coloneq-header-keeps-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def Estimator.improveUntilAux\n"
+       "    (a : Thunk α) (p : α → Bool) [Estimator a ε]\n"
+       "    [WellFoundedGT (range (bound a : ε → α))]\n"
+       "    (e : ε) (r : Bool) : Except (Option ε) ε :=\n"
+       "    if p (bound a e) then\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
 (ert-deftest lean4-indent--newline-after-wrapped-theorem-quantifier-line-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3622,6 +3635,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (forward-line 1)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-top-level-application-with-inline-fun-keeps-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def bestFirstSearch (f : α → MLList m α) (a : α) : MLList m α :=\n"
+       "  bestFirstSearchCore Thunk.pure (fun a : α => { x // x = a }) f a\n"
+       "    (β := α)\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
 
 (ert-deftest lean4-indent--newline-after-top-level-application-with-universe-args-indents-args ()
   (lean4-test-with-indent-buffer
