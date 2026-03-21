@@ -3873,6 +3873,151 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-convert-line-indents-next-proof-step ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def componentHom (a : Fiber (f.comap g.hom)) :\n"
+       "    fiber _ a ⟶ fiber _ (Fiber.mk f (g a.preimage)) :=\n"
+       "  TopCat.ofHom\n"
+       "  { toFun x := ⟨g x.val, by\n"
+       "      simp only [Fiber.mk, Set.mem_preimage, Set.mem_singleton_iff]\n"
+       "      convert map_eq_image _ _ x\n"
+       "      exact map_preimage_eq_image_map _ _ a⟩\n")
+    (goto-char (point-min))
+    (forward-line 5)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-inline-record-by-opens-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def componentHom (a : Fiber (f.comap g.hom)) :\n"
+       "    fiber _ a ⟶ fiber _ (Fiber.mk f (g a.preimage)) :=\n"
+       "  TopCat.ofHom\n"
+       "  { toFun x := ⟨g x.val, by\n"
+       "      simp only [Fiber.mk, Set.mem_preimage, Set.mem_singleton_iff]\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-apply-ext-opens-named-args ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma adjunction_left_triangle [HasExplicitFiniteCoproducts.{u} P]\n"
+       "    (X : Type max u w) : functorToPresheaves.{u, w}.map ((unit P hs).app X) ≫\n"
+       "      ((counit P hs).app ((functor P hs).obj X)).val = 𝟙 (functorToPresheaves.obj X) := by\n"
+       "  ext ⟨S⟩ (f : LocallyConstant _ X)\n"
+       "  simp only [Functor.id_obj, Functor.comp_obj, FunctorToTypes.comp, NatTrans.id_app,\n"
+       "    functorToPresheaves_obj_obj, types_id_apply]\n"
+       "  simp only [counit, counitApp_app]\n"
+       "  have := CompHausLike.preregular hs\n"
+       "  apply presheaf_ext\n"
+       "    (X := ((functor P hs).obj X).val) (Y := ((functor.{u, w} P hs).obj X).val)\n")
+    (goto-char (point-min))
+    (forward-line 8)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-bullet-intro-binders-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "noncomputable def isColimitLocallyConstantPresheaf (hc : IsLimit c) [∀ i, Epi (c.π.app i)] :\n"
+       "    IsColimit <| (locallyConstantPresheaf X).mapCocone c.op := by\n"
+       "  refine Types.FilteredColimit.isColimitOf _ _ ?_ ?_\n"
+       "  · intro ⟨i⟩ ⟨j⟩ (fi : LocallyConstant _ _) (fj : LocallyConstant _ _)\n"
+       "      (h : fi.comap (c.π.app i).hom = fj.comap (c.π.app j).hom)\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-declaration-colon-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def isoLocallyConstantOfIsColimit (hF : ∀ S : LightProfinite, IsColimit <|\n"
+       "    F.mapCocone (coconeRightOpOfCone S.asLimitCone)) :\n"
+       "      F ≅ (locallyConstantPresheaf\n"
+       "        (F.obj (toLightProfinite.op.obj ⟨of PUnit.{u + 1}⟩))) :=\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-operator-tail-keeps-wrapped-application-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def isoLocallyConstantOfIsColimit\n"
+       "    (hF : ∀ S : Profinite, IsColimit <| F.mapCocone S.asLimitCone.op) :\n"
+       "    F ≅ (locallyConstantPresheaf (F.obj (toProfinite.op.obj ⟨of PUnit.{u + 1}⟩))) :=\n"
+       "  (lanPresheafNatIso hF).symm ≪≫\n"
+       "    lanPresheafExt (isoFinYoneda F ≪≫ (locallyConstantIsoFinYoneda F).symm) ≪≫\n"
+       "      lanPresheafNatIso fun _ ↦ isColimitLocallyConstantPresheafDiagram _ _\n")
+    (goto-char (point-min))
+    (forward-line 4)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-refine-record-application-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma free_lightProfinite_internallyProjective_iff_tensor_condition' (P : LightProfinite.{u}) :\n"
+       "    InternallyProjective ((free R).obj P.toCondensed) ↔\n"
+       "      ∀ {A B : LightCondMod R} (e : A ⟶ B) [Epi e], (∀ (S : LightProfinite)\n"
+       "        (g : (free R).obj ((S ⊗ P).toCondensed) ⟶ B), ∃ (S' : LightProfinite)\n"
+       "          (π : S' ⟶ S) (_ : Function.Surjective π) (g' : (free R).obj (S' ⊗ P).toCondensed ⟶ A),\n"
+       "            ((free R).map (lightProfiniteToLightCondSet.map (π ▷ P))) ≫ g = g' ≫ e) := by\n"
+       "  rw [free_internallyProjective_iff_tensor_condition']\n"
+       "  refine ⟨fun h A B e he S g ↦ ?_, fun h A B e he S g ↦ ?_⟩\n"
+       "  · specialize h e S ((free R).map (μIso lightProfiniteToLightCondSet _ _).hom ≫ g)\n"
+       "    obtain ⟨S', π, hπ, g', hh⟩ := h\n"
+       "    refine ⟨S', π, hπ, (free R).map (μIso\n"
+       "        lightProfiniteToLightCondSet _ _).inv ≫ g', ?_⟩\n")
+    (goto-char (point-min))
+    (forward-line 10)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-variable-line-indents-assumptions ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "variable (P) (X : TopCat.{max u w})\n"
+       "    [HasExplicitFiniteCoproducts.{0} P] [HasExplicitPullbacks P]\n")
+    (goto-char (point-min))
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-top-level-havei-header-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "noncomputable def counit [HasExplicitFiniteCoproducts.{u} P] : haveI := CompHausLike.preregular hs\n"
+       "    (sheafSections _ _).obj ⟨CompHausLike.of P PUnit.{u + 1}⟩ ⋙ functor.{u, w} P hs ⟶\n")
+    (goto-char (point-min))
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-top-level-binder-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma incl_comap {S T : (CompHausLike P)ᵒᵖ}\n"
+       "    (f : LocallyConstant S.unop (Y.obj (op (CompHausLike.of P PUnit.{u + 1}))))\n"
+       "      (g : S ⟶ T) (a : Fiber (f.comap g.unop.hom)) :\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-top-level-operator-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "noncomputable def counit [HasExplicitFiniteCoproducts.{u} P] : haveI := CompHausLike.preregular hs\n"
+       "    (sheafSections _ _).obj ⟨CompHausLike.of P PUnit.{u + 1}⟩ ⋙ functor.{u, w} P hs ⟶\n"
+       "        𝟭 (Sheaf (coherentTopology (CompHausLike.{u} P)) (Type (max u w))) where\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
   (lean4-test-with-indent-buffer
       (concat
