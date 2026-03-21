@@ -2415,6 +2415,14 @@ not inside such a declaration."
            (not prev-line-ends-with-comma)
            (not prev-body-intro-kind))
       prev-indent)
+     ((and (lean4-indent--line-blank-p current-text)
+           anchor-pos
+           (lean4-indent--branch-line-p anchor-text)
+           (> prev-indent anchor-indent)
+           (not prev-line-ends-with-op)
+           (not prev-line-ends-with-comma)
+           (not prev-body-intro-kind))
+      prev-indent)
      ;; 11.8) Blank lines after a first-level non-tactic declaration body snap back.
      ((and (lean4-indent--line-blank-p current-text)
            anchor-pos
@@ -2786,6 +2794,18 @@ to cycle to shallower alternatives."
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*,\\s-*\\'"
+              prev-text-no-comment)
+             (not (string-match-p ":=" prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*=\\s-*\\'"
+              prev-text-no-comment)
+             (not (string-match-p ":=" prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*\\_<from\\_>\\s-*\\'"
               prev-text-no-comment))
         (+ prev-indent step))
@@ -2819,10 +2839,23 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         prev-indent)
        ((and prev-pos
+             (string-match-p "<;>\\s-*\\'" prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (string-match-p
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\)\\_>.*:=\\s-*\\S-+"
               prev-text-no-comment)
              (lean4-indent--projection-head-line-p prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*·\\s-*\\(?:rw\\|simp_rw\\)\\_>.*\\[[^]]*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 3 step)))
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:rw\\|simp_rw\\)\\_>.*\\[[^]]*\\'"
+                             prev-text-no-comment))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (lean4-indent--line-ends-with-left-arrow-p prev-text-no-comment))
@@ -2993,7 +3026,9 @@ to cycle to shallower alternatives."
              (or (lean4-indent--bare-tactic-term-intro-line-p prev-text-no-comment)
                  (lean4-indent--qualified-apply-line-p prev-text-no-comment)
                  (string-match-p "\\`[ \t]*apply_rules\\_>" prev-text-no-comment)))
-        (+ prev-indent step))
+        (if (string-match-p "\\`[ \t]*refine\\_>\\s-*\\'" prev-text-no-comment)
+            (+ prev-indent (* 2 step))
+          (+ prev-indent step)))
        ((and prev-pos
              (string-match-p "\\`[ \t]*\\(?:exact\\|refine\\)\\_>\\s-+\\S-" prev-text-no-comment))
         (if (and (string-match-p "\\`[ \t]*refine\\_>" prev-text-no-comment)

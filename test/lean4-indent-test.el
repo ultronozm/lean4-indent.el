@@ -3230,6 +3230,26 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-suffices-binder-comma-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  suffices ∀ i f L' R' l₁ l₂ h,\n"
+       "      True by\n")
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-suffices-equation-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  suffices ∀ f, stepAux (readAux n f) v (trTape' enc0 L R) =\n"
+       "      stepAux (f (enc R.head)) v (trTape' enc0 (L.cons R.head) R.tail) by\n")
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
 (ert-deftest lean4-indent--newline-after-havei-inline-value-stays-at-proof-column ()
   (lean4-test-with-indent-buffer
       (concat
@@ -3476,6 +3496,51 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "      (Primrec.fst (α := X) (β := Y))\n")
     (goto-char (point-min))
     (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-tactic-chain-semicolon-indents-next-step ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · rcases h with (h | h) <;>\n"
+       "      cases h\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-rw-open-bracket-indents-entries ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  · rw [Part.mem_unique h\n"
+       "        foo]\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-bare-refine-can-start-deep-term ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def trTape' : Tape Bool := by\n"
+       "  refine\n"
+       "      Tape.mk' foo bar\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-inside-branch-body-keeps-branch-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  cases h with\n"
+       "  | branch =>\n"
+       "      unfold writes at hw ⊢\n")
+    (goto-char (point-min))
+    (forward-line 3)
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
