@@ -3943,6 +3943,64 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-branch-record-sibling-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem Applicative.ext {F} :\n"
+       "    ∀ {A1 : Applicative F} {A2 : Applicative F}, A1 = A2\n"
+       "  | { toFunctor := F1, seq := s1, pure := p1, seqLeft := sl1, seqRight := sr1 },\n"
+       "    { toFunctor := F2, seq := s2, pure := p2, seqLeft := sl2, seqRight := sr2 },\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-branch-match-with-indents-inner-branch ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "protected def seq {α β : Type v} : Comp F G (α → β) → (Unit → Comp F G α) → Comp F G β\n"
+       "  | Comp.mk f, g => match g () with\n"
+       "    | Comp.mk x => Comp.mk <| (· <*> ·) <$> f <*> x\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-where-field-type-comma-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "class CommApplicative (m : Type u → Type v) [Applicative m] : Prop extends LawfulApplicative m where\n"
+       "  commutative_prod : ∀ {α β} (a : m α) (b : m β),\n"
+       "    Prod.mk <$> a <*> b = (fun (b : β) a => (a, b)) <$> b <*> a\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-where-field-forall-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "class LawfulBitraversable (t : Type u → Type u → Type u) [Bitraversable t] : Prop\n"
+       "  extends LawfulBifunctor t where\n"
+       "  comp_bitraverse :\n"
+       "    ∀ {F G} [Applicative F] [Applicative G] [LawfulApplicative F] [LawfulApplicative G]\n"
+       "      {α α' β β' γ γ'} (f : β → F γ) (f' : β' → F γ') (g : α → G β) (g' : α' → G β') (x : t α α'),\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-lower-bound-and-assert)))
+
+(ert-deftest lean4-indent--newline-after-wrapped-coloneq-continuation-keeps-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem ωScottContinuous_uncurry :\n"
+       "    ωScottContinuous (monotoneUncurry α β γ) :=\n"
+       "    .of_map_ωSup_of_orderHom fun c ↦ by\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
 (ert-deftest lean4-indent--newline-after-wrapped-declaration-colon-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
