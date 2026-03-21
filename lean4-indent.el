@@ -481,6 +481,12 @@ current line."
         text)
        (not (string-match-p "\\_<with\\_>" text))))
 
+(defun lean4-indent--bare-have-suffices-colon-line-p (text)
+  "Return non-nil if TEXT is a `have`/`suffices` line ending at the colon."
+  (string-match-p
+   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*:\\s-*\\'"
+   text))
+
 (defun lean4-indent--proof-at-target-line-p (text)
   "Return non-nil if TEXT is a standalone tactic target clause like `at h ⊢`."
   (string-match-p "\\`[ \t]*at\\_>.*⊢\\s-*\\'" text))
@@ -2240,8 +2246,8 @@ not inside such a declaration."
         ('equals
          (if (and prev-continuation-p
                   anchor-pos
-                  (string-match-p lean4-indent--re-have-suffices
-                                  (lean4-indent--line-text anchor-pos)))
+                  (lean4-indent--bare-have-suffices-colon-line-p
+                   (lean4-indent--line-text anchor-pos)))
              prev-indent
            (if (and prev-pos (lean4-indent--in-calc-block-p prev-pos))
                (+ prev-indent (* 2 step))
@@ -2860,15 +2866,12 @@ This is used for blank-line indentation. It tries to choose the deepest
 plausible indentation in a few common completed-code situations, leaving `TAB'
 to cycle to shallower alternatives."
   (when (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
-    (lean4-indent--ensure-buffer-context-caches)
-    (let ((lean4-indent--region-line-contexts lean4-indent--buffer-line-contexts)
-          (lean4-indent--region-top-level-contexts lean4-indent--buffer-top-level-contexts))
-      (let* ((step lean4-indent-offset)
+    (let* ((step lean4-indent-offset)
              (prev-pos (lean4-indent--prev-nonblank))
              (prev-text (if prev-pos (lean4-indent--line-text prev-pos) ""))
              (prev-text-no-comment
-             (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
-                 (lean4-indent--line-text-no-comment prev-pos)
+              (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
+                  (lean4-indent--line-text-no-comment prev-pos)
                ""))
              (prev-comma-item-text
               (if (and prev-pos
@@ -3036,6 +3039,11 @@ to cycle to shallower alternatives."
              (string-match-p "\\`[ \t]*\\_<variable\\_>\\s-+\\S-" prev-text-no-comment)
              (string-match-p "[([{]" prev-text-no-comment)
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
+             (= prev-indent 0)
+             (lean4-indent--line-top-level-declaration-head-p prev-text-no-comment)
+             (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment))
         (+ prev-indent (* 2 step)))
        ((and prev-pos
              (= prev-indent 0)
@@ -3956,6 +3964,7 @@ to cycle to shallower alternatives."
                        (not (lean4-indent--line-body-intro-kind prev-text-no-comment))
                        (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
                        (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (string-match-p "[])}⟩]\\s-*$" prev-text)))
         open-delimited-body-indent)
        ((and prev-pos
@@ -4053,7 +4062,7 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
              (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment)))
         (+ prev-indent step))
-         (t nil))))))
+       (t nil)))))
 
 (defun lean4-indent--prefer-base-indent-over-newline-helper-p ()
   "Return non-nil when blank-line helper should defer to base indentation.

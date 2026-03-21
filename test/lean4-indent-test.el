@@ -3178,6 +3178,20 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
 
+(ert-deftest lean4-indent--newline-after-local-have-equality-line-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem units_semiconj_of_translationNumber_eq {f₁ f₂ : CircleDeg1Liftˣ}\n"
+       "    (h : τ f₁ = τ f₂) :\n"
+       "    ∃ F : CircleDeg1Lift, Semiconj F f₁ f₂ :=\n"
+       "  have : ∀ n : Multiplicative ℤ,\n"
+       "      τ ((Units.coeHom _).comp (zpowersHom _ f₁) n) =\n"
+       "        τ ((Units.coeHom _).comp (zpowersHom _ f₂) n) := fun n ↦ by\n")
+    (goto-char (point-min))
+    (forward-line 4)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
 (ert-deftest lean4-indent--newline-after-bullet-have-wrapped-type-line-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
