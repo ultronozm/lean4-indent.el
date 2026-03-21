@@ -894,6 +894,11 @@ tail."
   (when (string-match "\\`[ \t]*calc\\s-+\\S-" text)
     (1- (match-end 0))))
 
+(defun lean4-indent--embedded-calc-expression-column (text)
+  "Return the starting column of an embedded `calc` expression in TEXT, or nil."
+  (when (string-match "\\_<calc\\_>\\s-+\\S-" text)
+    (1- (match-end 0))))
+
 (defun lean4-indent--line-contains-calc-p (text)
   "Return non-nil if TEXT contains a real `calc` opener."
   (string-match-p "\\_<calc\\_>" text))
@@ -2667,12 +2672,16 @@ to cycle to shallower alternatives."
              (calc-relation-col
               (and prev-pos
                    (lean4-indent--calc-relation-column prev-text-no-comment)))
-             (calc-inline-expression-col
-              (and prev-pos
-                   (lean4-indent--calc-inline-expression-column prev-text-no-comment)))
-             (prev-delimited-sibling-indent
-              (and prev-pos
-                   (string-match-p "[])}⟩]\\s-*$" prev-text)
+           (calc-inline-expression-col
+            (and prev-pos
+                 (lean4-indent--calc-inline-expression-column prev-text-no-comment)))
+           (embedded-calc-expression-col
+            (and prev-pos
+                 (not (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-calc))
+                 (lean4-indent--embedded-calc-expression-column prev-text-no-comment)))
+           (prev-delimited-sibling-indent
+            (and prev-pos
+                 (string-match-p "[])}⟩]\\s-*$" prev-text)
                    (lean4-indent--find-prev-delimited-sibling-indent
                     prev-pos prev-indent)))
              (open-paren-pos-prev (and prev-pos (lean4-indent--open-paren-pos-at-eol prev-pos)))
@@ -2784,6 +2793,11 @@ to cycle to shallower alternatives."
              (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-calc)
              (not calc-relation-col))
         (+ calc-inline-expression-col step))
+       ((and prev-pos
+             embedded-calc-expression-col
+             (lean4-indent--line-contains-calc-p prev-text)
+             (not calc-relation-col))
+        (+ embedded-calc-expression-col step))
        ((and prev-pos
              (or (lean4-indent--starts-with-p prev-text lean4-indent--re-starts-calc)
                  (lean4-indent--line-starts-with-calc-step-p prev-text)
