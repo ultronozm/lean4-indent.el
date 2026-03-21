@@ -3096,6 +3096,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "    ")))
 
+(ert-deftest lean4-indent--newline-after-rcases-line-allows-with-continuation ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo (hg : True) : True := by\n"
+       "  rcases hg\n"
+       "    with ⟨h⟩\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
 (ert-deftest lean4-indent--newline-after-proof-with-line-indents-its-body ()
   (lean4-test-with-indent-buffer
       (concat
