@@ -3976,6 +3976,39 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 2)))
 
+(ert-deftest lean4-indent--newline-after-structure-field-fun-opens-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def optionSubtype [DecidableEq β] (x : β) :\n"
+       "    { e : Option α ≃ β // e none = x } ≃ (α ≃ { y : β // y ≠ x }) where\n"
+       "  toFun e :=\n"
+       "    { toFun := fun a =>\n"
+       "        ⟨(e : Option α ≃ β) a, ((EquivLike.injective _).ne_iff' e.property).2 (some_ne_none _)⟩,\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
+(ert-deftest lean4-indent--newline-after-closing-simp-only-line-returns-to-clause ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def optionSubtype [DecidableEq β] (x : β) :\n"
+       "    { e : Option α ≃ β // e none = x } ≃ (α ≃ { y : β // y ≠ x }) where\n"
+       "  invFun e :=\n"
+       "    ⟨{  toFun := fun a => casesOn' a x (Subtype.val ∘ e),\n"
+       "        invFun := fun b => if h : b = x then none else e.symm ⟨b, h⟩,\n"
+       "        left_inv := fun a => by\n"
+       "          cases a with\n"
+       "          | none => simp\n"
+       "          | some a =>\n"
+       "            simp only [casesOn'_some, Function.comp_apply, Subtype.coe_eta,\n"
+       "              symm_apply_apply, dite_eq_ite]\n"
+       "            exact if_neg (e a).property,\n")
+    (goto-char (point-min))
+    (forward-line 10)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 12)))
+
 (ert-deftest lean4-indent--newline-after-nested-paren-projection-head-indents-sibling-deeply ()
   (lean4-test-with-indent-buffer
       (concat

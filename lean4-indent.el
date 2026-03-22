@@ -1110,6 +1110,26 @@ argument on the next line is a natural deep continuation."
   (when (string-match "\\`[ \t]*⟨(" text)
     (1- (match-end 0))))
 
+(defun lean4-indent--previous-bracket-clause-indent (pos)
+  "Return the indent of a multiline bracket-clause opener before POS, or nil."
+  (save-excursion
+    (goto-char pos)
+    (let ((start-indent (current-indentation))
+          found)
+      (while (and (not found) (= (forward-line -1) 0))
+        (let ((text (lean4-indent--line-text (point)))
+              (indent (current-indentation)))
+          (unless (or (lean4-indent--line-blank-p text)
+                      (lean4-indent--comment-line-p (point)))
+            (cond
+             ((string-match-p
+               "\\`[ \t]*\\(?:simp\\(?:\\?\\|_rw\\)?\\|rw\\|dsimp\\(?:\\s-+only\\)?\\)\\_>.*\\[[^]]*\\'"
+               text)
+              (setq found indent))
+             ((< indent start-indent)
+              (setq found 'stop))))))
+      (and (integerp found) found))))
+
 (defun lean4-indent--paren-led-bare-head-line-p (text)
   "Return non-nil when TEXT is a parenthesized bare head awaiting arguments."
   (string-match-p "\\`[ \t]*\\(?:([ \t]*\\)+@?[[:word:]_.']+\\s-*\\'" text))
@@ -2986,6 +3006,10 @@ to cycle to shallower alternatives."
                        (line-beginning-position) open-paren-pos-prev-on-line))))))
        (cond
        ((and prev-pos
+             (string-match-p "]\\s-*$" prev-text)
+             (lean4-indent--previous-bracket-clause-indent prev-pos))
+        (lean4-indent--previous-bracket-clause-indent prev-pos))
+       ((and prev-pos
              top-level-context
              (eq (plist-get top-level-context :kind) 'declaration)
              (eq top-level-body-intro-kind 'colon)
@@ -3607,6 +3631,11 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         prev-indent)
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:{\\s-*\\)?[[:word:]_'.]+\\s-*:=\\s-*fun\\_>.*=>\\s-*\\'"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (lean4-indent--line-ends-with-by-p prev-text-no-comment)
              (not (string-match-p "<|\\s-*\\_<by\\_>\\s-*$"
                                   prev-text-no-comment))
@@ -4063,6 +4092,10 @@ to cycle to shallower alternatives."
                                   prev-text-no-comment)))
         (max (+ prev-indent step)
              (+ (lean4-indent--inline-open-paren-argument-column prev-text) step)))
+       ((and prev-pos
+             (string-match-p "]\\s-*$" prev-text)
+             (lean4-indent--previous-bracket-clause-indent prev-pos))
+        (lean4-indent--previous-bracket-clause-indent prev-pos))
        ((and prev-pos
              prev-delimited-sibling-indent
              (string-match-p "[])}⟩]\\s-*$" prev-text))
