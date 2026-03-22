@@ -4309,10 +4309,10 @@ already-closed parenthesized argument."
 (defun lean4-indent--newline-helper-next-line-upper-bound (base-indent)
   "Return a safe upper bound for blank-line helper indentation, or nil.
 
-This is intentionally narrow: it only applies to wrapped top-level
-declaration header lines whose next existing line belongs to the same
-declaration.  In that family, the following line gives a trustworthy cap
-for avoiding obviously excessive indentation on `C-j'."
+This uses the following existing nonblank line only as a cap, never as a
+driver.  It is intentionally conservative: the cap applies only when the
+next line belongs to the same enclosing top-level item and the current line
+is not obviously open-ended."
   (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
              base-indent)
     (let ((prev-pos (lean4-indent--prev-nonblank))
@@ -4326,21 +4326,22 @@ for avoiding obviously excessive indentation on `C-j'."
                 (lean4-indent--top-level-context prev-pos lean4-indent-offset))
                (next-top-level-context
                 (lean4-indent--top-level-context next-pos lean4-indent-offset))
-               (prev-body-intro-kind
-                (lean4-indent--line-body-intro-kind prev-text-no-comment))
                (next-indent (lean4-indent--line-indent next-pos))
-               (prev-body-indent
-                (plist-get prev-top-level-context :body-indent)))
+               (prev-indent (lean4-indent--line-indent prev-pos))
+               (body-indent (plist-get prev-top-level-context :body-indent)))
           (and prev-top-level-context
                next-top-level-context
                (eq (plist-get prev-top-level-context :kind) 'declaration)
                (= (plist-get prev-top-level-context :pos)
                   (plist-get next-top-level-context :pos))
-               prev-body-indent
-               (> (lean4-indent--line-indent prev-pos) prev-body-indent)
-               (= (or (lean4-indent--line-leading-binder-group-count prev-pos) 0) 1)
-               (memq prev-body-intro-kind '(colon coloneq))
-               (>= next-indent base-indent)
+               (not (lean4-indent--comment-line-p next-pos))
+               (not (lean4-indent--string-line-p next-pos))
+               (or (not body-indent)
+                   (>= next-indent body-indent))
+               (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+               (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+               (not (and (> prev-indent next-indent)
+                         (lean4-indent--line-starts-with-paren-p prev-text-no-comment)))
                next-indent))))))
 
 (defun lean4-indent-line-function ()
@@ -4385,10 +4386,8 @@ for avoiding obviously excessive indentation on `C-j'."
                     (max newline-computed base-computed))
                 base-computed))
              (newline-upper-bound
-              (and newline-computed
-                   (> newline-computed base-computed)
-                   (lean4-indent--newline-helper-next-line-upper-bound
-                    base-computed)))
+              (lean4-indent--newline-helper-next-line-upper-bound
+               base-computed))
              (computed (if newline-upper-bound
                            (min raw-computed newline-upper-bound)
                          raw-computed))

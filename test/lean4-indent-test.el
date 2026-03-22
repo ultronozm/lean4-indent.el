@@ -4324,6 +4324,33 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-proof-intro-by-does-not-overindent-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "@[simp]\n"
+       "theorem mem_rfind {p : ℕ →. Bool} {n : ℕ} :\n"
+       "    n ∈ rfind p ↔ true ∈ p n ∧ ∀ {m : ℕ}, m < n → false ∈ p m :=\n"
+       "  ⟨fun h => ⟨rfind_spec h, @rfind_min _ _ h⟩, fun ⟨h₁, h₂⟩ => by\n"
+       "    let ⟨m, hm⟩ := dom_iff_mem.1 <| (@rfind_dom p).2 ⟨_, h₁, fun {m} mn => (h₂ mn).fst⟩\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-bullet-exact-does-not-overindent-next-bullet ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem foo : True := by\n"
+       "  have pm : (p m).Dom := by\n"
+       "    rcases H with ⟨n, h₁, h₂⟩\n"
+       "    rcases lt_trichotomy m n with (h₃ | h₃ | h₃)\n"
+       "    · exact h₂ _ h₃\n"
+       "    · rw [h₃]\n")
+    (goto-char (point-min))
+    (forward-line 4)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
 (ert-deftest lean4-indent--newline-after-operator-tail-keeps-wrapped-application-going ()
   (lean4-test-with-indent-buffer
       (concat
