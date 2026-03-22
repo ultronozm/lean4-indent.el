@@ -3127,6 +3127,20 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (lean4-test--goto-eob)
     (lean4-test--newline-and-assert "      ")))
 
+(ert-deftest lean4-indent--newline-after-show-from-line-indents-proof-term ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def subtypeEquivCodomain (f : { x' // x' ≠ x } → Y) :\n"
+       "    { g : X → Y // g ∘ (↑) = f } ≃ Y :=\n"
+       "  (subtypePreimage _ f).trans <|\n"
+       "    @funUnique { x' // ¬x' ≠ x } _ <|\n"
+       "      show Unique { x' // ¬x' ≠ x } from\n"
+       "        @Equiv.unique _ _\n")
+    (goto-char (point-min))
+    (forward-line 4)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
 (ert-deftest lean4-indent--newline-after-all-goals-indents-body ()
   (lean4-test-with-indent-buffer
       (concat

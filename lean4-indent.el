@@ -3728,6 +3728,10 @@ to cycle to shallower alternatives."
              (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
         (+ prev-indent step))
        ((and prev-pos
+             (string-match-p "\\`[ \t]*show\\_>.*\\_<from\\_>\\s-*$"
+                             prev-text-no-comment))
+        (+ prev-indent step))
+       ((and prev-pos
              (lean4-indent--proof-with-line-p prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
