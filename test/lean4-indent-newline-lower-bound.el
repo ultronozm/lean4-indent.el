@@ -30,8 +30,11 @@
            (not (lean4-indent--comment-line-p pos))
            (not (lean4-indent--string-line-p pos))))))
 
-(defun lean4-indent-newline-lower-bound-check-buffer ()
-  "Return a list of lower-bound newline failures for the current Lean buffer.
+(defun lean4-indent-newline-lower-bound-check-buffer (&optional start-line end-line)
+  "Return lower-bound newline failures for the current Lean buffer.
+
+When START-LINE and/or END-LINE are non-nil, only check original lines in that
+inclusive range.
 
 Each element is a plist containing:
 - `:line'       the original line number where `newline-and-indent' was tried
@@ -44,36 +47,41 @@ Each element is a plist containing:
     ;; Work bottom-up so inserted lines do not disturb later probes.
     (dotimes (offset (max 0 (1- line-count)))
       (let ((line (- line-count offset 1)))
-        (goto-char (point-min))
-        (forward-line (1- line))
-        (let ((current-pos (point)))
-          (when (and (lean4-indent-newline-lower-bound--eligible-line-p current-pos)
-                     (save-excursion
-                       (forward-line 1)
-                       (and (not (eobp))
-                            (lean4-indent-newline-lower-bound--eligible-line-p (point)))))
-            (let* ((current-text (lean4-indent-newline-lower-bound--line-string))
-                   (next-info
-                    (save-excursion
-                      (forward-line 1)
-                      (list :indent (current-indentation)
-                            :text (lean4-indent-newline-lower-bound--line-string))))
-                   (expected (plist-get next-info :indent))
-                   (next-text (plist-get next-info :text)))
-              (end-of-line)
-              (call-interactively #'newline-and-indent)
-              (let ((got (current-indentation)))
-                (when (< got expected)
-                  (push (list :line line
-                              :got got
-                              :expected expected
-                              :current current-text
-                              :next next-text)
-                        failures))))))))
+        (when (and (or (not start-line) (<= start-line line))
+                   (or (not end-line) (<= line end-line)))
+          (goto-char (point-min))
+          (forward-line (1- line))
+          (let ((current-pos (point)))
+            (when (and (lean4-indent-newline-lower-bound--eligible-line-p current-pos)
+                       (save-excursion
+                         (forward-line 1)
+                         (and (not (eobp))
+                              (lean4-indent-newline-lower-bound--eligible-line-p (point)))))
+              (let* ((current-text (lean4-indent-newline-lower-bound--line-string))
+                     (next-info
+                      (save-excursion
+                        (forward-line 1)
+                        (list :indent (current-indentation)
+                              :text (lean4-indent-newline-lower-bound--line-string))))
+                     (expected (plist-get next-info :indent))
+                     (next-text (plist-get next-info :text)))
+                (end-of-line)
+                (call-interactively #'newline-and-indent)
+                (let ((got (current-indentation)))
+                  (when (< got expected)
+                    (push (list :line line
+                                :got got
+                                :expected expected
+                                :current current-text
+                                :next next-text)
+                          failures)))))))))
     (nreverse failures)))
 
-(defun lean4-indent-newline-lower-bound-check-file (file)
-  "Check FILE for lower-bound newline failures and return the failure list."
+(defun lean4-indent-newline-lower-bound-check-file (file &optional start-line end-line)
+  "Check FILE for lower-bound newline failures and return the failure list.
+
+When START-LINE and/or END-LINE are non-nil, only check original lines in that
+inclusive range."
   (with-temp-buffer
     (insert-file-contents file)
     (goto-char (point-min))
@@ -81,7 +89,7 @@ Each element is a plist containing:
     (setq-local indent-tabs-mode nil)
     (setq-local lean4-indent-offset 2)
     (lean4-indent-setup-buffer)
-    (lean4-indent-newline-lower-bound-check-buffer)))
+    (lean4-indent-newline-lower-bound-check-buffer start-line end-line)))
 
 (defun lean4-indent-newline-lower-bound-batch-file ()
   "Batch entry point for checking one Lean file.
@@ -89,15 +97,26 @@ Each element is a plist containing:
 Usage:
   emacs --batch -L . -L /path/to/lean4-mode \\
     -l test/lean4-indent-newline-lower-bound.el \\
-    -f lean4-indent-newline-lower-bound-batch-file FILE"
+    -f lean4-indent-newline-lower-bound-batch-file FILE [START [END]]"
   (let* ((file (car command-line-args-left))
+         (start-line (and (cadr command-line-args-left)
+                          (string-to-number (cadr command-line-args-left))))
+         (end-line (and (caddr command-line-args-left)
+                        (string-to-number (caddr command-line-args-left))))
          (failures (and file
-                        (lean4-indent-newline-lower-bound-check-file file))))
+                        (lean4-indent-newline-lower-bound-check-file
+                         file start-line end-line))))
     (unless file
       (error "missing FILE argument"))
     (if failures
         (progn
-          (princ (format "FAILURES %d %s\n" (length failures) file))
+          (princ (format "FAILURES %d %s%s\n"
+                         (length failures)
+                         file
+                         (if start-line
+                             (format " [%d,%s]" start-line
+                                     (if end-line (number-to-string end-line) "end"))
+                           "")))
           (dolist (failure failures)
             (princ
              (format "line %d: got %d expected >= %d\n  current: %s\n  next:    %s\n"
@@ -107,7 +126,12 @@ Usage:
                      (plist-get failure :current)
                      (plist-get failure :next))))
           (kill-emacs 1))
-      (princ (format "OK %s\n" file))
+      (princ (format "OK %s%s\n"
+                     file
+                     (if start-line
+                         (format " [%d,%s]" start-line
+                                 (if end-line (number-to-string end-line) "end"))
+                       "")))
       (kill-emacs 0))))
 
 (provide 'lean4-indent-newline-lower-bound)
