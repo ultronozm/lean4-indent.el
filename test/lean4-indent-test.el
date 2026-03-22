@@ -3965,6 +3965,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 6)))
 
+(ert-deftest lean4-indent--newline-after-inline-then-body-stays-at-else-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def removeNone_aux (x : α) : β :=\n"
+       "  if h : (e (some x)).isSome then Option.get _ h\n"
+       "  else\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-nested-paren-projection-head-indents-sibling-deeply ()
   (lean4-test-with-indent-buffer
       (concat

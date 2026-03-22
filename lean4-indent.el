@@ -3602,6 +3602,11 @@ to cycle to shallower alternatives."
               prev-text-no-comment))
         (+ prev-indent step))
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*if\\_>.*\\_<then\\_>\\s-+\\S-+"
+              prev-text-no-comment))
+        prev-indent)
+       ((and prev-pos
              (lean4-indent--line-ends-with-by-p prev-text-no-comment)
              (not (string-match-p "<|\\s-*\\_<by\\_>\\s-*$"
                                   prev-text-no-comment))
