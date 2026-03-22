@@ -3592,6 +3592,11 @@ to cycle to shallower alternatives."
               (+ body-indent step)
             (+ prev-indent step))))
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*·\\s-*\\(?:have\\|let\\)\\_>.*:=\\s-*\\_<by\\_>\\s-*$"
+              prev-text-no-comment))
+        (+ prev-indent (* 2 step)))
+       ((and prev-pos
              (lean4-indent--line-ends-with-by-p prev-text-no-comment)
              (not (string-match-p "<|\\s-*\\_<by\\_>\\s-*$"
                                   prev-text-no-comment))

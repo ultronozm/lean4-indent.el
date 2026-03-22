@@ -3933,6 +3933,22 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-bullet-have-by-indents-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem Fin.snoc_eq_cons_rotate {α : Type*} (v : Fin n → α) (a : α) :\n"
+       "    @Fin.snoc _ (fun _ => α) v a = fun i => @Fin.cons _ (fun _ => α) a v (finRotate _ i) := by\n"
+       "  ext ⟨i, h⟩\n"
+       "  by_cases h' : i < n\n"
+       "  · rw [finRotate_of_lt h', Fin.snoc, Fin.cons, dif_pos h']\n"
+       "    rfl\n"
+       "  · have h'' : n = i := by\n"
+       "      simp only [not_lt] at h'\n")
+    (goto-char (point-min))
+    (forward-line 6)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-nested-paren-projection-head-indents-sibling-deeply ()
   (lean4-test-with-indent-buffer
       (concat
