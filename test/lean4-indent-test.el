@@ -3949,6 +3949,22 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 6)))
 
+(ert-deftest lean4-indent--newline-after-rcases-have-rhs-keeps-going ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem denumerable_list_aux : ∀ n : ℕ, ∃ a ∈ @decodeList α _ n, encodeList a = n\n"
+       "  | 0 => by rw [decodeList]; exact ⟨_, rfl, rfl⟩\n"
+       "  | succ v => by\n"
+       "    rcases e : unpair v with ⟨v₁, v₂⟩\n"
+       "    have h := unpair_right_le v\n"
+       "    rw [e] at h\n"
+       "    rcases have : v₂ < succ v := lt_succ_of_le h\n"
+       "      denumerable_list_aux v₂ with\n")
+    (goto-char (point-min))
+    (forward-line 6)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-nested-paren-projection-head-indents-sibling-deeply ()
   (lean4-test-with-indent-buffer
       (concat
