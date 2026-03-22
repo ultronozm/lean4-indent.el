@@ -4310,25 +4310,18 @@ already-closed parenthesized argument."
   "Return a safe upper bound for blank-line helper indentation, or nil.
 
 This uses the following existing nonblank line only as a cap, never as a
-driver.  It is intentionally conservative: the cap applies only when the
-next line belongs to the same enclosing top-level item and the current line
-is not obviously open-ended."
+driver.  The cap applies when the next line belongs to the same enclosing
+top-level declaration and is not shallower than that declaration's body."
   (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
              base-indent)
     (let ((prev-pos (lean4-indent--prev-nonblank))
           (next-pos (lean4-indent--next-nonblank)))
       (when (and prev-pos next-pos)
-        (let* ((prev-text-no-comment
-                (if (lean4-indent--comment-line-p prev-pos)
-                    ""
-                  (lean4-indent--line-text-no-comment prev-pos)))
-               (prev-top-level-context
+        (let* ((prev-top-level-context
                 (lean4-indent--top-level-context prev-pos lean4-indent-offset))
                (next-top-level-context
                 (lean4-indent--top-level-context next-pos lean4-indent-offset))
-               (next-indent (lean4-indent--line-indent next-pos))
-               (prev-indent (lean4-indent--line-indent prev-pos))
-               (body-indent (plist-get prev-top-level-context :body-indent)))
+               (next-indent (lean4-indent--line-indent next-pos)))
           (and prev-top-level-context
                next-top-level-context
                (eq (plist-get prev-top-level-context :kind) 'declaration)
@@ -4336,12 +4329,7 @@ is not obviously open-ended."
                   (plist-get next-top-level-context :pos))
                (not (lean4-indent--comment-line-p next-pos))
                (not (lean4-indent--string-line-p next-pos))
-               (or (not body-indent)
-                   (>= next-indent body-indent))
-               (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
-               (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
-               (not (and (> prev-indent next-indent)
-                         (lean4-indent--line-starts-with-paren-p prev-text-no-comment)))
+               (>= next-indent (plist-get prev-top-level-context :body-indent))
                next-indent))))))
 
 (defun lean4-indent-line-function ()

@@ -4337,6 +4337,96 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-angle-fun-proofs-does-not-overindent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem bind_decode_iff {f : α → β → Option σ} :\n"
+       "    (Computable₂ fun a n => (decode (α := β) n).bind (f a)) ↔ Computable₂ f :=\n"
+       "  ⟨fun hf =>\n"
+       "    Nat.Partrec.of_eq\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-closed-application-line-dedents-to-next-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem bind_decode_iff {f : α → β → Option σ} :\n"
+       "    (Computable₂ fun a n => (decode (α := β) n).bind (f a)) ↔ Computable₂ f :=\n"
+       "  ⟨fun hf =>\n"
+       "    Nat.Partrec.of_eq\n"
+       "      (((Partrec.nat_iff.2\n"
+       "        (Nat.Partrec.ppred.comp <| Nat.Partrec.of_primrec <| Primcodable.prim (α := β))).comp\n"
+       "            snd).bind\n"
+       "        (Computable.comp hf fst).to₂.partrec₂)\n"
+       "      fun n => by\n")
+    (goto-char (point-min))
+    (forward-line 7)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
+(ert-deftest lean4-indent--newline-after-proof-branch-dedents-to-next-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem bind_decode_iff {f : α → β → Option σ} :\n"
+       "    (Computable₂ fun a n => (decode (α := β) n).bind (f a)) ↔ Computable₂ f :=\n"
+       "  ⟨fun hf =>\n"
+       "    Nat.Partrec.of_eq\n"
+       "      (((Partrec.nat_iff.2\n"
+       "        (Nat.Partrec.ppred.comp <| Nat.Partrec.of_primrec <| Primcodable.prim (α := β))).comp\n"
+       "            snd).bind\n"
+       "        (Computable.comp hf fst).to₂.partrec₂)\n"
+       "      fun n => by\n"
+       "        simp only [decode_prod_val, decode_nat, Option.map_some, PFun.coe_val, bind_eq_bind,\n"
+       "          bind_some, Part.map_bind, map_some]\n"
+       "        cases decode (α := α) n.unpair.1 <;> simp\n"
+       "        cases decode (α := β) n.unpair.2 <;> simp,\n"
+       "    fun hf => by\n")
+    (goto-char (point-min))
+    (forward-line 12)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-closed-inner-application-dedents-to-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem bind_decode_iff {f : α → β → Option σ} :\n"
+       "    (Computable₂ fun a n => (decode (α := β) n).bind (f a)) ↔ Computable₂ f :=\n"
+       "  ⟨fun hf =>\n"
+       "    Nat.Partrec.of_eq\n"
+       "      (((Partrec.nat_iff.2\n"
+       "        (Nat.Partrec.ppred.comp <| Nat.Partrec.of_primrec <| Primcodable.prim (α := β))).comp\n"
+       "            snd).bind\n"
+       "        (Computable.comp hf fst).to₂.partrec₂)\n")
+    (goto-char (point-min))
+    (forward-line 6)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 8)))
+
+(ert-deftest lean4-indent--newline-after-inner-coloneq-dedents-to-enclosing-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem bind_decode_iff {f : α → β → Option σ} :\n"
+       "    (Computable₂ fun a n => (decode (α := β) n).bind (f a)) ↔ Computable₂ f :=\n"
+       "  ⟨fun hf =>\n"
+       "    Nat.Partrec.of_eq\n"
+       "      fun n => by\n"
+       "        simp only [decode_prod_val, decode_nat, Option.map_some, PFun.coe_val, bind_eq_bind,\n"
+       "          bind_some, Part.map_bind, map_some]\n"
+       "        cases decode (α := α) n.unpair.1 <;> simp\n"
+       "        cases decode (α := β) n.unpair.2 <;> simp,\n"
+       "    fun hf => by\n"
+       "    have :\n"
+       "      Partrec fun a : α × ℕ =>\n"
+       "        (encode (decode (α := β) a.2)).casesOn (some Option.none)\n"
+       "          fun n => Part.map (f a.1) (decode (α := β) n) :=\n"
+       "      Partrec.nat_casesOn_right\n")
+    (goto-char (point-min))
+    (forward-line 13)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 6)))
+
 (ert-deftest lean4-indent--newline-after-bullet-exact-does-not-overindent-next-bullet ()
   (lean4-test-with-indent-buffer
       (concat
