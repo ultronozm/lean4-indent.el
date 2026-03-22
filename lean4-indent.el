@@ -4306,6 +4306,43 @@ already-closed parenthesized argument."
                (string-match-p "[])}⟩]\\.[[:word:]_'.]+\\s-*$" prev-text-no-comment)
                (not open-prev)))))))
 
+(defun lean4-indent--newline-helper-next-line-upper-bound (base-indent)
+  "Return a safe upper bound for blank-line helper indentation, or nil.
+
+This is intentionally narrow: it only applies to wrapped top-level
+declaration header lines whose next existing line belongs to the same
+declaration.  In that family, the following line gives a trustworthy cap
+for avoiding obviously excessive indentation on `C-j'."
+  (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
+             base-indent)
+    (let ((prev-pos (lean4-indent--prev-nonblank))
+          (next-pos (lean4-indent--next-nonblank)))
+      (when (and prev-pos next-pos)
+        (let* ((prev-text-no-comment
+                (if (lean4-indent--comment-line-p prev-pos)
+                    ""
+                  (lean4-indent--line-text-no-comment prev-pos)))
+               (prev-top-level-context
+                (lean4-indent--top-level-context prev-pos lean4-indent-offset))
+               (next-top-level-context
+                (lean4-indent--top-level-context next-pos lean4-indent-offset))
+               (prev-body-intro-kind
+                (lean4-indent--line-body-intro-kind prev-text-no-comment))
+               (next-indent (lean4-indent--line-indent next-pos))
+               (prev-body-indent
+                (plist-get prev-top-level-context :body-indent)))
+          (and prev-top-level-context
+               next-top-level-context
+               (eq (plist-get prev-top-level-context :kind) 'declaration)
+               (= (plist-get prev-top-level-context :pos)
+                  (plist-get next-top-level-context :pos))
+               prev-body-indent
+               (> (lean4-indent--line-indent prev-pos) prev-body-indent)
+               (= (or (lean4-indent--line-leading-binder-group-count prev-pos) 0) 1)
+               (memq prev-body-intro-kind '(colon coloneq))
+               (>= next-indent base-indent)
+               next-indent))))))
+
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -4336,16 +4373,25 @@ already-closed parenthesized argument."
              (newline-prev-indent
               (and newline-prev-pos
                    (lean4-indent--line-indent newline-prev-pos)))
-             (computed (if (and newline-computed
-                                (not (and (> newline-computed base-computed)
-                                          newline-prev-indent
-                                          (>= base-computed newline-prev-indent)
-                                          (lean4-indent--prefer-base-indent-over-newline-helper-p))))
-                           (if (and (< newline-computed base-computed)
-                                    (lean4-indent--prefer-newline-helper-over-base-p))
-                               newline-computed
-                             (max newline-computed base-computed))
-                         base-computed))
+             (raw-computed
+              (if (and newline-computed
+                       (not (and (> newline-computed base-computed)
+                                 newline-prev-indent
+                                 (>= base-computed newline-prev-indent)
+                                 (lean4-indent--prefer-base-indent-over-newline-helper-p))))
+                  (if (and (< newline-computed base-computed)
+                           (lean4-indent--prefer-newline-helper-over-base-p))
+                      newline-computed
+                    (max newline-computed base-computed))
+                base-computed))
+             (newline-upper-bound
+              (and newline-computed
+                   (> newline-computed base-computed)
+                   (lean4-indent--newline-helper-next-line-upper-bound
+                    base-computed)))
+             (computed (if newline-upper-bound
+                           (min raw-computed newline-upper-bound)
+                         raw-computed))
              (current (current-indentation))
              (tabp (eq this-command 'indent-for-tab-command))
              (target (cond

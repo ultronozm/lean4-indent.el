@@ -4312,6 +4312,18 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-wrapped-binder-colon-with-inline-fun-dedents-to-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem nat_casesOn {f : α → ℕ} {g : α → σ} {h : α → ℕ → σ} (hf : Computable f) (hg : Computable g)\n"
+       "    (hh : Computable₂ h) :\n"
+       "    Computable fun a => Nat.casesOn (motive := fun _ => σ) (f a) (g a) (h a) :=\n"
+       "  nat_rec hf hg (hh.comp fst <| fst.comp snd).to₂\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
 (ert-deftest lean4-indent--newline-after-operator-tail-keeps-wrapped-application-going ()
   (lean4-test-with-indent-buffer
       (concat
