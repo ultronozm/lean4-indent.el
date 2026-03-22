@@ -4311,7 +4311,8 @@ already-closed parenthesized argument."
 
 This uses the following existing nonblank line only as a cap, never as a
 driver.  The cap applies when the next line belongs to the same enclosing
-top-level item and is not shallower than that item's body."
+top-level item and either stays within that item's body or does not continue
+deeper than the base indentation already computed for the blank line."
   (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
              base-indent)
     (let ((prev-pos (lean4-indent--prev-nonblank))
@@ -4342,7 +4343,8 @@ top-level item and is not shallower than that item's body."
                (= prev-item-pos next-item-pos)
                (not (lean4-indent--comment-line-p next-pos))
                (not (lean4-indent--string-line-p next-pos))
-               (>= next-indent prev-body-indent)
+               (or (>= next-indent prev-body-indent)
+                   (<= next-indent base-indent))
                next-indent))))))
 
 (defun lean4-indent-line-function ()

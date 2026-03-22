@@ -4324,6 +4324,31 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-calc-step-proof-dedents-to-next-step ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem eq_one_iff_unique {α : Type*} : #α = 1 ↔ Subsingleton α ∧ Nonempty α :=\n"
+       "  calc\n"
+       "    #α = 1 ↔ #α ≤ 1 ∧ 1 ≤ #α := le_antisymm_iff\n"
+       "    _ ↔ Subsingleton α ∧ Nonempty α :=\n"
+       "      le_one_iff_subsingleton.and (one_le_iff_ne_zero.trans mk_ne_zero_iff)\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 4)))
+
+(ert-deftest lean4-indent--newline-after-proof-line-dedents-to-next-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem mk_le_iff_forall_finset_subset_card_le {α : Type u} {n : ℕ} {t : Set α} :\n"
+       "    #t ≤ n ↔ ∀ s : Finset α, (s : Set α) ⊆ t → s.card ≤ n := by\n"
+       "  refine ⟨fun H s hs ↦ by simpa using (mk_le_mk_of_subset hs).trans H, fun H ↦ ?_⟩\n"
+       "  apply card_le_of (fun s ↦ ?_)\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-proof-intro-by-does-not-overindent-body ()
   (lean4-test-with-indent-buffer
       (concat
