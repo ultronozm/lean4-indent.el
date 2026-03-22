@@ -4362,6 +4362,19 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 2)))
 
+(ert-deftest lean4-indent--newline-before-deriving-dedents-to-clause-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "inductive Lists'.{u} (α : Type u) : Bool → Type u\n"
+       "  | atom : α → Lists' α false\n"
+       "  | nil : Lists' α true\n"
+       "  | cons' {b} : Lists' α b → Lists' α true → Lists' α true\n"
+       "  deriving DecidableEq\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-proof-intro-by-does-not-overindent-body ()
   (lean4-test-with-indent-buffer
       (concat

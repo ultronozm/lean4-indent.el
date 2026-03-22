@@ -4328,7 +4328,7 @@ deeper than the base indentation already computed for the blank line."
                   ""))
                (next-companion-anchor-p
                 (string-match-p
-                 "\\`[ \t]*\\_<\\(?:termination_by\\|decreasing_by\\)\\_>"
+                 "\\`[ \t]*\\_<\\(?:termination_by\\|decreasing_by\\|deriving\\)\\_>"
                  next-text-no-comment))
                (prev-top-level-context
                 (lean4-indent--top-level-context prev-pos lean4-indent-offset))
