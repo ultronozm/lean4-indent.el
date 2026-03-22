@@ -3089,7 +3089,8 @@ to cycle to shallower alternatives."
              top-level-body-intro-pos
              (= prev-pos top-level-body-intro-pos)
              (lean4-indent--line-ends-with-coloneq-p prev-text-no-comment)
-             (> prev-leading-binder-groups 0))
+             (> prev-leading-binder-groups 0)
+             (not (string-match-p "\\_<fun\\_>.*=>.*:=\\s-*\\'" prev-text-no-comment)))
         prev-indent)
        ((and prev-pos
              top-level-context

@@ -3378,6 +3378,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-after-wrapped-binder-coloneq-with-inline-fun-dedents-to-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem option_bind {f : α → Option β} {g : α → β → Option σ} (hf : Computable f)\n"
+       "    (hg : Computable₂ g) : Computable fun a => (f a).bind (g a) :=\n"
+       "  (option_casesOn hf (const Option.none) hg).of_eq fun a => by cases f a <;> rfl\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-wrapped-theorem-quantifier-line-keeps-going ()
   (lean4-test-with-indent-buffer
       (concat
