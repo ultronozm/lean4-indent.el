@@ -4835,5 +4835,21 @@ theorem mem_split {x : T} {l : List T} : x ∈ l → ∃ s t : List T, l = s ++ 
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-paren-pipe-by-opens-proof-body ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "def prodEmbeddingDisjointEquivSigmaEmbeddingRestricted {α β γ : Type*} :\n"
+       "    { f : (α ↪ γ) × (β ↪ γ) // Disjoint (Set.range f.1) (Set.range f.2) } ≃\n"
+       "      Σ f : α ↪ γ, β ↪ ↥(Set.range f)ᶜ :=\n"
+       "  (subtypeProdEquivSigmaSubtype fun (a : α ↪ γ) (b : β ↪ _) =>\n"
+       "        Disjoint (Set.range a) (Set.range b)).trans <|\n"
+       "    Equiv.sigmaCongrRight fun a =>\n"
+       "      (subtypeEquivProp <| by\n"
+       "            ext f\n")
+    (goto-char (point-min))
+    (forward-line 6)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 12)))
+
 (provide 'lean4-indent-test)
 ;;; lean4-indent-test.el ends here

@@ -3599,6 +3599,10 @@ to cycle to shallower alternatives."
                                   prev-text-no-comment)))
         (+ prev-indent step))
        ((and prev-pos
+             (string-match-p "<|\\s-*\\_<by\\_>\\s-*$" prev-text-no-comment)
+             (lean4-indent--line-starts-with-paren-p prev-text))
+       (+ prev-indent (* 3 step)))
+       ((and prev-pos
              (string-match-p "<|\\s-*\\_<by\\_>\\s-*$" prev-text-no-comment))
        (+ prev-indent (* 2 step)))
        ((and prev-pos
