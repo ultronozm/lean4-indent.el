@@ -4427,6 +4427,21 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 6)))
 
+(ert-deftest lean4-indent--newline-in-wrapped-variable-block-dedents-to-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "variable\n"
+       "  [(coherentTopology CompHaus).WEqualsLocallyBijective A]\n"
+       "  [HasSheafify (coherentTopology CompHaus) A]\n"
+       "  [(coherentTopology CompHaus.{u}).HasSheafCompose (CategoryTheory.forget A)]\n"
+       "  [Balanced (Sheaf (coherentTopology CompHaus) A)] in\n"
+       "lemma epi_iff_locallySurjective_on_compHaus : True := by\n"
+       "  trivial\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-bullet-exact-does-not-overindent-next-bullet ()
   (lean4-test-with-indent-buffer
       (concat

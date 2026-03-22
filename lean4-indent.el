@@ -4311,7 +4311,7 @@ already-closed parenthesized argument."
 
 This uses the following existing nonblank line only as a cap, never as a
 driver.  The cap applies when the next line belongs to the same enclosing
-top-level declaration and is not shallower than that declaration's body."
+top-level item and is not shallower than that item's body."
   (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
              base-indent)
     (let ((prev-pos (lean4-indent--prev-nonblank))
@@ -4324,7 +4324,6 @@ top-level declaration and is not shallower than that declaration's body."
                (next-indent (lean4-indent--line-indent next-pos)))
           (and prev-top-level-context
                next-top-level-context
-               (eq (plist-get prev-top-level-context :kind) 'declaration)
                (= (plist-get prev-top-level-context :pos)
                   (plist-get next-top-level-context :pos))
                (not (lean4-indent--comment-line-p next-pos))
