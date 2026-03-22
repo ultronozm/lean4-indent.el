@@ -4442,6 +4442,16 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 2)))
 
+(ert-deftest lean4-indent--newline-after-single-line-variable-dedents-to-wrapped-sibling ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "variable [∀ X Y, FunLike (FA X Y) (CA X) (CA Y)] [ConcreteCategory.{v'} A FA]\n"
+       "  [HasFunctorialSurjectiveInjectiveFactorization A]\n"
+       "\n")
+    (goto-char (point-min))
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-bullet-exact-does-not-overindent-next-bullet ()
   (lean4-test-with-indent-buffer
       (concat

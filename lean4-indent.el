@@ -4317,18 +4317,32 @@ top-level item and is not shallower than that item's body."
     (let ((prev-pos (lean4-indent--prev-nonblank))
           (next-pos (lean4-indent--next-nonblank)))
       (when (and prev-pos next-pos)
-        (let* ((prev-top-level-context
+        (let* ((prev-anchor-p
+                (lean4-indent--line-structural-top-level-anchor-p prev-pos))
+               (next-anchor-p
+                (lean4-indent--line-structural-top-level-anchor-p next-pos))
+               (prev-top-level-context
                 (lean4-indent--top-level-context prev-pos lean4-indent-offset))
                (next-top-level-context
                 (lean4-indent--top-level-context next-pos lean4-indent-offset))
+               (prev-item-pos
+                (or (and prev-anchor-p prev-pos)
+                    (plist-get prev-top-level-context :pos)))
+               (next-item-pos
+                (or (and next-anchor-p next-pos)
+                    (plist-get next-top-level-context :pos)))
+               (prev-body-indent
+                (or (and prev-anchor-p
+                         (+ (lean4-indent--line-indent prev-pos) lean4-indent-offset))
+                    (plist-get prev-top-level-context :body-indent)))
                (next-indent (lean4-indent--line-indent next-pos)))
-          (and prev-top-level-context
-               next-top-level-context
-               (= (plist-get prev-top-level-context :pos)
-                  (plist-get next-top-level-context :pos))
+          (and prev-item-pos
+               next-item-pos
+               prev-body-indent
+               (= prev-item-pos next-item-pos)
                (not (lean4-indent--comment-line-p next-pos))
                (not (lean4-indent--string-line-p next-pos))
-               (>= next-indent (plist-get prev-top-level-context :body-indent))
+               (>= next-indent prev-body-indent)
                next-indent))))))
 
 (defun lean4-indent-line-function ()

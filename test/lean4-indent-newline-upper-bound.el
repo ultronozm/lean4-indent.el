@@ -55,6 +55,49 @@
          (not (and (> current-indent next-indent)
                    (lean4-indent--line-starts-with-paren-p current-text))))))
 
+(defun lean4-indent-newline-upper-bound--collect-candidates (&optional start-line end-line)
+  "Collect upper-bound newline candidates in the current buffer.
+
+When START-LINE and/or END-LINE are non-nil, only include original lines in
+that inclusive range.
+
+Return a list of plists.  Each plist contains:
+- `:line'       original line number
+- `:pos'        original line beginning position
+- `:expected'   indentation of the original following line
+- `:current'    text of the line where `newline-and-indent' will be tried
+- `:next'       text of the original following line"
+  (save-excursion
+    (goto-char (point-min))
+    (let ((line 1)
+          (candidates nil))
+      (while (not (eobp))
+        (let ((current-pos (point)))
+          (when (and (or (not start-line) (<= start-line line))
+                     (or (not end-line) (<= line end-line))
+                     (lean4-indent-newline-upper-bound--eligible-line-p current-pos)
+                     (save-excursion
+                       (forward-line 1)
+                       (and (not (eobp))
+                            (lean4-indent-newline-upper-bound--eligible-line-p (point))
+                            (lean4-indent-newline-upper-bound--trust-next-line-p
+                             current-pos (point)))))
+            (let* ((current-text (lean4-indent-newline-upper-bound--line-string))
+                   (next-info
+                    (save-excursion
+                      (forward-line 1)
+                      (list :indent (current-indentation)
+                            :text (lean4-indent-newline-upper-bound--line-string)))))
+              (push (list :line line
+                          :pos current-pos
+                          :expected (plist-get next-info :indent)
+                          :current current-text
+                          :next (plist-get next-info :text))
+                    candidates))))
+        (setq line (1+ line))
+        (forward-line 1))
+      candidates)))
+
 (defun lean4-indent-newline-upper-bound-check-buffer (&optional start-line end-line)
   "Return upper-bound newline failures for the current Lean buffer.
 
@@ -67,41 +110,36 @@ Each element is a plist containing:
 - `:expected'   indentation of the original following line
 - `:current'    text of the line where the newline was inserted
 - `:next'       text of the original following line"
-  (let ((failures nil)
-        (line-count (line-number-at-pos (point-max) t)))
-    ;; Work bottom-up so inserted lines do not disturb later probes.
-    (dotimes (offset (max 0 (1- line-count)))
-      (let ((line (- line-count offset 1)))
-        (when (and (or (not start-line) (<= start-line line))
-                   (or (not end-line) (<= line end-line)))
-          (goto-char (point-min))
-          (forward-line (1- line))
-          (let ((current-pos (point)))
-            (when (and (lean4-indent-newline-upper-bound--eligible-line-p current-pos)
-                       (save-excursion
-                         (forward-line 1)
-                         (and (not (eobp))
-                              (lean4-indent-newline-upper-bound--eligible-line-p (point))
-                              (lean4-indent-newline-upper-bound--trust-next-line-p
-                               current-pos (point)))))
-              (let* ((current-text (lean4-indent-newline-upper-bound--line-string))
-                     (next-info
-                      (save-excursion
-                        (forward-line 1)
-                        (list :indent (current-indentation)
-                              :text (lean4-indent-newline-upper-bound--line-string))))
-                     (expected (plist-get next-info :indent))
-                     (next-text (plist-get next-info :text)))
-                (end-of-line)
-                (call-interactively #'newline-and-indent)
-                (let ((got (current-indentation)))
-                  (when (> got expected)
-                    (push (list :line line
-                                :got got
-                                :expected expected
-                                :current current-text
-                                :next next-text)
-                          failures)))))))))
+  (let* ((lean4-indent--region-line-contexts
+          (lean4-indent--build-region-line-context-cache))
+         (lean4-indent--region-top-level-contexts
+          (lean4-indent--build-top-level-context-cache lean4-indent-offset))
+         (candidates
+          (lean4-indent-newline-upper-bound--collect-candidates
+           start-line end-line))
+         (failures nil))
+    ;; Probe bottom-up so the temporary inserted line never disturbs later
+    ;; candidate positions from the original buffer.
+    (dolist (candidate candidates)
+      (let ((line (plist-get candidate :line))
+            (pos (plist-get candidate :pos))
+            (expected (plist-get candidate :expected))
+            (current-text (plist-get candidate :current))
+            (next-text (plist-get candidate :next)))
+        (goto-char pos)
+        (end-of-line)
+        (let ((lean4-indent--region-line-contexts nil)
+              (lean4-indent--region-top-level-contexts nil))
+          (call-interactively #'newline-and-indent))
+        (let ((got (current-indentation)))
+          (when (> got expected)
+            (push (list :line line
+                        :got got
+                        :expected expected
+                        :current current-text
+                        :next next-text)
+                  failures)))
+        (delete-region (line-beginning-position) (line-beginning-position 2))))
     (nreverse failures)))
 
 (defun lean4-indent-newline-upper-bound-check-file (file &optional start-line end-line)
