@@ -4322,6 +4322,14 @@ deeper than the base indentation already computed for the blank line."
                 (lean4-indent--line-structural-top-level-anchor-p prev-pos))
                (next-anchor-p
                 (lean4-indent--line-structural-top-level-anchor-p next-pos))
+               (next-text-no-comment
+                (if (and next-pos (not (lean4-indent--comment-line-p next-pos)))
+                    (lean4-indent--line-text-no-comment next-pos)
+                  ""))
+               (next-companion-anchor-p
+                (string-match-p
+                 "\\`[ \t]*\\_<\\(?:termination_by\\|decreasing_by\\)\\_>"
+                 next-text-no-comment))
                (prev-top-level-context
                 (lean4-indent--top-level-context prev-pos lean4-indent-offset))
                (next-top-level-context
@@ -4332,6 +4340,10 @@ deeper than the base indentation already computed for the blank line."
                (next-item-pos
                 (or (and next-anchor-p next-pos)
                     (plist-get next-top-level-context :pos)))
+               (same-item-p
+                (or (= prev-item-pos next-item-pos)
+                    (and prev-item-pos
+                         next-companion-anchor-p)))
                (prev-body-indent
                 (or (and prev-anchor-p
                          (+ (lean4-indent--line-indent prev-pos) lean4-indent-offset))
@@ -4340,7 +4352,7 @@ deeper than the base indentation already computed for the blank line."
           (and prev-item-pos
                next-item-pos
                prev-body-indent
-               (= prev-item-pos next-item-pos)
+               same-item-p
                (not (lean4-indent--comment-line-p next-pos))
                (not (lean4-indent--string-line-p next-pos))
                (or (>= next-indent prev-body-indent)

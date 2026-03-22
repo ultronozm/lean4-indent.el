@@ -4349,6 +4349,19 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 2)))
 
+(ert-deftest lean4-indent--newline-before-termination-by-dedents-to-clause-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "lemma mul_neg (x y : PGame) : x * -y = -(x * y) :=\n"
+       "  by\n"
+       "    change -(mk _ _ _ _ * _) ≡r _\n"
+       "    exact (negMulRelabelling _ _).symm\n"
+       "  termination_by (x, y)\n")
+    (goto-char (point-min))
+    (forward-line 3)
+    (end-of-line)
+    (lean4-test--newline-next-line-bounds-and-assert 2)))
+
 (ert-deftest lean4-indent--newline-after-proof-intro-by-does-not-overindent-body ()
   (lean4-test-with-indent-buffer
       (concat
