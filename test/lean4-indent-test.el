@@ -4337,6 +4337,34 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 4)))
 
+(ert-deftest lean4-indent--newline-inside-calc-by-proof-keeps-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : (a + b) * (a + b) = a * a + 2 * (a * b) + b * b :=\n"
+       "  calc\n"
+       "    (a + b) * (a + b) = a * a + b * a + (a * b + b * b) := by\n"
+       "      rw [mul_add, add_mul, add_mul]\n"
+       "    _ = a * a + (b * a + a * b) + b * b := by\n"
+       "      rw [← add_assoc, add_assoc (a * a)]\n"
+       "    _ = a * a + 2 * (a * b) + b * b := by\n"
+       "      rw [mul_comm b a, ← two_mul]\n")
+    (dolist (line '(4 6 8))
+      (lean4-test--goto-line line)
+      (end-of-line)
+      (lean4-test--newline-and-assert "      ")
+      (delete-region (line-beginning-position) (line-beginning-position 2)))))
+
+(ert-deftest lean4-indent--newline-inside-truncated-calc-by-proof-keeps-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : (a + b) * (a + b) = a * a + 2 * (a * b) + b * b :=\n"
+       "  calc\n"
+       "    (a + b) * (a + b) = a * a + b * a + (a * b + b * b) := by\n"
+       "      rw [mul_add, add_mul, add_mul]\n")
+    (lean4-test--goto-line 4)
+    (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
+
 (ert-deftest lean4-indent--newline-after-proof-line-dedents-to-next-sibling ()
   (lean4-test-with-indent-buffer
       (concat

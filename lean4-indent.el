@@ -4188,6 +4188,21 @@ to cycle to shallower alternatives."
        ((and prev-pos
              (lean4-indent--in-calc-block-p prev-pos)
              anchor-pos
+             (lean4-indent--line-ends-with-coloneq-by-p anchor-text-no-comment)
+             (> prev-indent anchor-indent)
+             (not (lean4-indent--line-starts-with-calc-step-p prev-text))
+             (not (lean4-indent--line-starts-with-relop-p prev-text))
+             (not (lean4-indent--line-starts-with-closing-p prev-text))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
+        (let ((body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step)))
+          (if body-indent
+              (max body-indent prev-indent)
+            (+ prev-indent step))))
+       ((and prev-pos
+             (lean4-indent--in-calc-block-p prev-pos)
+             anchor-pos
              (> prev-indent anchor-indent)
              (not (lean4-indent--line-starts-with-calc-step-p prev-text))
              (not (lean4-indent--line-starts-with-relop-p prev-text))
@@ -4337,6 +4352,10 @@ deeper than the base indentation already computed for the blank line."
                 (lean4-indent--line-structural-top-level-anchor-p prev-pos))
                (next-anchor-p
                 (lean4-indent--line-structural-top-level-anchor-p next-pos))
+               (prev-text-no-comment
+                (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
+                    (lean4-indent--line-text-no-comment prev-pos)
+                  ""))
                (next-text-no-comment
                 (if (and next-pos (not (lean4-indent--comment-line-p next-pos)))
                     (lean4-indent--line-text-no-comment next-pos)
@@ -4363,11 +4382,22 @@ deeper than the base indentation already computed for the blank line."
                 (or (and prev-anchor-p
                          (+ (lean4-indent--line-indent prev-pos) lean4-indent-offset))
                     (plist-get prev-top-level-context :body-indent)))
-               (next-indent (lean4-indent--line-indent next-pos)))
+               (next-indent (lean4-indent--line-indent next-pos))
+               (crosses-calc-proof-to-next-step-p
+                (and prev-pos
+                     next-pos
+                     (lean4-indent--in-calc-block-p prev-pos)
+                     (> (lean4-indent--line-indent prev-pos)
+                        (lean4-indent--line-indent next-pos))
+                     (not (lean4-indent--line-starts-with-calc-step-p prev-text-no-comment))
+                     (not (lean4-indent--line-starts-with-relop-p prev-text-no-comment))
+                     (or (lean4-indent--line-starts-with-calc-step-p next-text-no-comment)
+                         (lean4-indent--line-starts-with-relop-p next-text-no-comment)))))
           (and prev-item-pos
                next-item-pos
                prev-body-indent
                same-item-p
+               (not crosses-calc-proof-to-next-step-p)
                (not (lean4-indent--comment-line-p next-pos))
                (not (lean4-indent--string-line-p next-pos))
                (or (>= next-indent prev-body-indent)
