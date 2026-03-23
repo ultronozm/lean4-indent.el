@@ -4365,6 +4365,20 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "      ")))
 
+(ert-deftest lean4-indent--newline-inside-calc-proof-ignores-following-companion-anchor ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : (a + b) * (a + b) = a * a + (b * a + a * b) + b * b :=\n"
+       "  calc\n"
+       "    (a + b) * (a + b) = a * a + b * a + (a * b + b * b) := by\n"
+       "      rw [add_mul, mul_add, mul_add, mul_comm a b]\n"
+       "    _ = a * a + (b * a + a * b) + b * b := by\n"
+       "      rw [add_assoc]\n"
+       "  termination_by (a)\n")
+    (lean4-test--goto-line 6)
+    (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
+
 (ert-deftest lean4-indent--newline-after-proof-line-dedents-to-next-sibling ()
   (lean4-test-with-indent-buffer
       (concat
@@ -4377,7 +4391,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-next-line-bounds-and-assert 2)))
 
-(ert-deftest lean4-indent--newline-before-termination-by-dedents-to-clause-column ()
+(ert-deftest lean4-indent--newline-before-termination-by-does-not-dedent-proof-body ()
   (lean4-test-with-indent-buffer
       (concat
        "lemma mul_neg (x y : PGame) : x * -y = -(x * y) :=\n"
@@ -4388,7 +4402,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 3)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 2)))
+    (lean4-test--newline-and-assert "      ")))
 
 (ert-deftest lean4-indent--newline-before-deriving-dedents-to-clause-column ()
   (lean4-test-with-indent-buffer

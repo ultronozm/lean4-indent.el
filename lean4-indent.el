@@ -4374,14 +4374,18 @@ deeper than the base indentation already computed for the blank line."
                (next-item-pos
                 (or (and next-anchor-p next-pos)
                     (plist-get next-top-level-context :pos)))
-               (same-item-p
-                (or (= prev-item-pos next-item-pos)
-                    (and prev-item-pos
-                         next-companion-anchor-p)))
                (prev-body-indent
                 (or (and prev-anchor-p
                          (+ (lean4-indent--line-indent prev-pos) lean4-indent-offset))
                     (plist-get prev-top-level-context :body-indent)))
+               (allow-companion-anchor-cap-p
+                (and prev-item-pos
+                     next-companion-anchor-p
+                     prev-body-indent
+                     (<= (lean4-indent--line-indent prev-pos) prev-body-indent)))
+               (same-item-p
+                (or (= prev-item-pos next-item-pos)
+                    allow-companion-anchor-cap-p))
                (next-indent (lean4-indent--line-indent next-pos))
                (crosses-calc-proof-to-next-step-p
                 (and prev-pos
