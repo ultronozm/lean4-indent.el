@@ -97,6 +97,9 @@ current line."
 (defvar lean4-indent--region-line-contexts nil
   "Dynamically bound per-line context cache for `lean4-indent-region-function'.")
 
+(defvar lean4-indent--call-top-level-context-cache nil
+  "Dynamically bound memo table for `lean4-indent--top-level-context'.")
+
 (defvar-local lean4-indent--buffer-context-cache-tick nil
   "Buffer modification tick for live indentation caches.")
 
@@ -1679,24 +1682,36 @@ not inside such a declaration."
 
 (defun lean4-indent--top-level-context (start-pos step)
   "Return top-level context for START-POS as a plist, or nil."
-  (or (and start-pos
-           lean4-indent--region-top-level-contexts
-           (let ((index (1- (line-number-at-pos start-pos t))))
-             (and (>= index 0)
-                  (< index (length lean4-indent--region-top-level-contexts))
-                  (aref lean4-indent--region-top-level-contexts index))))
-      (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
-        (when top
-          (let* ((top-text (lean4-indent--line-text top))
-                 (top-kind (lean4-indent--line-top-level-binder-head-kind top-text))
-                 (body-intro
-                  (and (eq top-kind 'declaration)
-                       (lean4-indent--top-level-declaration-body-intro-from top start-pos))))
-            (list :pos top
-                  :kind top-kind
-                  :body-indent (+ (lean4-indent--line-indent top) step)
-                  :body-intro-pos (plist-get body-intro :pos)
-                  :body-intro-kind (plist-get body-intro :kind)))))))
+  (let ((result
+         (or (and start-pos
+                  lean4-indent--region-top-level-contexts
+                  (let ((index (1- (line-number-at-pos start-pos t))))
+                    (and (>= index 0)
+                         (< index (length lean4-indent--region-top-level-contexts))
+                         (aref lean4-indent--region-top-level-contexts index))))
+             (let* ((cache lean4-indent--call-top-level-context-cache)
+                    (key (and cache start-pos (cons start-pos step)))
+                    (cached (and key (gethash key cache 'missing))))
+               (if (and cache
+                        (not (eq cached 'missing)))
+                   cached
+                 (let ((top (and start-pos (lean4-indent--find-top-level-anchor start-pos))))
+                   (when top
+                     (let* ((top-text (lean4-indent--line-text top))
+                            (top-kind (lean4-indent--line-top-level-binder-head-kind top-text))
+                            (body-intro
+                             (and (eq top-kind 'declaration)
+                                  (lean4-indent--top-level-declaration-body-intro-from top start-pos)))
+                            (computed
+                             (list :pos top
+                                   :kind top-kind
+                                   :body-indent (+ (lean4-indent--line-indent top) step)
+                                   :body-intro-pos (plist-get body-intro :pos)
+                                   :body-intro-kind (plist-get body-intro :kind))))
+                       (when key
+                         (puthash key computed cache))
+                       computed))))))))
+    result))
 
 (defun lean4-indent--top-level-declaration-body-intro-kind (start-pos)
   "Return the body-intro kind for the nearest enclosing top-level declaration."
@@ -4381,49 +4396,52 @@ deeper than the base indentation already computed for the blank line."
             (end-of-line)))
       )
      (t
-     (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
-             (base-computed (lean4-indent--compute-indent))
-             (newline-prev-pos
-              (and newline-computed
-                   (save-excursion (lean4-indent--prev-nonblank))))
-             (newline-prev-indent
-              (and newline-prev-pos
-                   (lean4-indent--line-indent newline-prev-pos)))
-             (raw-computed
-              (if (and newline-computed
-                       (not (and (> newline-computed base-computed)
-                                 newline-prev-indent
-                                 (>= base-computed newline-prev-indent)
-                                 (lean4-indent--prefer-base-indent-over-newline-helper-p))))
-                  (if (and (< newline-computed base-computed)
-                           (lean4-indent--prefer-newline-helper-over-base-p))
-                      newline-computed
-                    (max newline-computed base-computed))
-                base-computed))
-             (newline-upper-bound
-              (lean4-indent--newline-helper-next-line-upper-bound
-               base-computed))
-             (computed (if newline-upper-bound
-                           (min raw-computed newline-upper-bound)
-                         raw-computed))
-             (current (current-indentation))
-             (tabp (eq this-command 'indent-for-tab-command))
-             (target (cond
-                      ((and tabp (eq last-command 'indent-for-tab-command))
-                       (lean4-indent--cycle-indent computed current))
-                      ((and (not tabp)
-                            (not newline-computed)
-                            (> current 0)
-                            (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
-                                     (or (< current computed)
-                                         lean4-indent--preserve-tactic-region-indentation))
-                                (lean4-indent--acceptable-region-body-indent-p computed current)))
-                       current)
-                      (t computed)))
-             (eolp (eolp)))
-        (indent-line-to (max 0 target))
-        (when eolp
-          (end-of-line)))))))
+      (let ((lean4-indent--call-top-level-context-cache
+             (and (lean4-indent--line-blank-p current-text)
+                  (make-hash-table :test #'equal :size 32))))
+        (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
+               (base-computed (lean4-indent--compute-indent))
+               (newline-prev-pos
+                (and newline-computed
+                     (save-excursion (lean4-indent--prev-nonblank))))
+               (newline-prev-indent
+                (and newline-prev-pos
+                     (lean4-indent--line-indent newline-prev-pos)))
+               (raw-computed
+                (if (and newline-computed
+                         (not (and (> newline-computed base-computed)
+                                   newline-prev-indent
+                                   (>= base-computed newline-prev-indent)
+                                   (lean4-indent--prefer-base-indent-over-newline-helper-p))))
+                    (if (and (< newline-computed base-computed)
+                             (lean4-indent--prefer-newline-helper-over-base-p))
+                        newline-computed
+                      (max newline-computed base-computed))
+                  base-computed))
+               (newline-upper-bound
+                (lean4-indent--newline-helper-next-line-upper-bound
+                 base-computed))
+               (computed (if newline-upper-bound
+                             (min raw-computed newline-upper-bound)
+                           raw-computed))
+               (current (current-indentation))
+               (tabp (eq this-command 'indent-for-tab-command))
+               (target (cond
+                        ((and tabp (eq last-command 'indent-for-tab-command))
+                         (lean4-indent--cycle-indent computed current))
+                        ((and (not tabp)
+                              (not newline-computed)
+                              (> current 0)
+                              (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
+                                       (or (< current computed)
+                                           lean4-indent--preserve-tactic-region-indentation))
+                                  (lean4-indent--acceptable-region-body-indent-p computed current)))
+                         current)
+                        (t computed)))
+               (eolp (eolp)))
+          (indent-line-to (max 0 target))
+          (when eolp
+            (end-of-line))))))))
 
 (defun lean4-indent-region-function (start end)
   "Indent nonblank lines between START and END using Lean 4 rules.
