@@ -58,6 +58,17 @@ line in these specs."
   (lean4-test--newline-and-indent)
   (should (equal (lean4-test--line-string) expected)))
 
+(defun lean4-test--newline-and-assert-prefix-stable (expected)
+  "Assert `newline-and-indent' yields EXPECTED and ignores later lines.
+
+This checks the result in the full fixture and again in a prefix-only
+buffer ending at point."
+  (let ((prefix (buffer-substring-no-properties (point-min) (point))))
+    (lean4-test--newline-and-assert expected)
+    (lean4-test-with-indent-buffer prefix
+      (lean4-test--goto-eob)
+      (lean4-test--newline-and-assert expected))))
+
 (defun lean4-test--newline-lower-bound-and-assert ()
   "Run `newline-and-indent' and assert the new line is deep enough.
 
@@ -77,12 +88,28 @@ following line in the test fixture."
   (should (<= (current-indentation) max-indent)))
 
 (defun lean4-test--newline-next-line-bounds-and-assert (max-indent)
-  "Use the original next line as a lower bound and MAX-INDENT as an upper bound."
-  (let ((min-indent
-         (save-excursion
-           (forward-line 1)
-           (current-indentation))))
-    (lean4-test--newline-bounds-and-assert min-indent max-indent)))
+  "Use the original next line only as a style oracle, not as `C-j' semantics.
+
+The inserted line must:
+- stay between the original next line's indentation and MAX-INDENT
+- produce the same indentation even if all later lines are removed"
+  (let* ((min-indent
+          (save-excursion
+            (forward-line 1)
+            (current-indentation)))
+         (prefix
+          (buffer-substring-no-properties (point-min) (point)))
+         full-indent
+         prefix-indent)
+    (lean4-test--newline-and-indent)
+    (setq full-indent (current-indentation))
+    (lean4-test-with-indent-buffer prefix
+      (lean4-test--goto-eob)
+      (lean4-test--newline-and-indent)
+      (setq prefix-indent (current-indentation)))
+    (should (= full-indent prefix-indent))
+    (should (>= full-indent min-indent))
+    (should (<= full-indent max-indent))))
 
 (defun lean4-test--open-line-below ()
   "Insert a newline below point without indenting it first."
@@ -4312,7 +4339,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
-(ert-deftest lean4-indent--newline-after-wrapped-binder-colon-with-inline-fun-dedents-to-body ()
+(ert-deftest lean4-indent--newline-after-wrapped-binder-colon-with-inline-fun-keeps-local-continuation ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem nat_casesOn {f : α → ℕ} {g : α → σ} {h : α → ℕ → σ} (hf : Computable f) (hg : Computable g)\n"
@@ -4322,9 +4349,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 1)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 4)))
+    (lean4-test--newline-and-assert-prefix-stable "      ")))
 
-(ert-deftest lean4-indent--newline-after-calc-step-proof-dedents-to-next-step ()
+(ert-deftest lean4-indent--newline-after-calc-step-proof-opens-local-proof-term ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem eq_one_iff_unique {α : Type*} : #α = 1 ↔ Subsingleton α ∧ Nonempty α :=\n"
@@ -4335,7 +4362,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 2)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 4)))
+    (lean4-test--newline-and-assert-prefix-stable "      ")))
 
 (ert-deftest lean4-indent--newline-inside-calc-by-proof-keeps-proof-column ()
   (lean4-test-with-indent-buffer
@@ -4379,7 +4406,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "      ")))
 
-(ert-deftest lean4-indent--newline-after-proof-line-dedents-to-next-sibling ()
+(ert-deftest lean4-indent--newline-after-proof-line-keeps-local-proof-column ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem mk_le_iff_forall_finset_subset_card_le {α : Type u} {n : ℕ} {t : Set α} :\n"
@@ -4389,7 +4416,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 2)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 2)))
+    (lean4-test--newline-and-assert-prefix-stable "    ")))
 
 (ert-deftest lean4-indent--newline-before-termination-by-does-not-dedent-proof-body ()
   (lean4-test-with-indent-buffer
@@ -4404,7 +4431,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "      ")))
 
-(ert-deftest lean4-indent--newline-before-deriving-dedents-to-clause-column ()
+(ert-deftest lean4-indent--newline-before-deriving-keeps-constructor-column ()
   (lean4-test-with-indent-buffer
       (concat
        "inductive Lists'.{u} (α : Type u) : Bool → Type u\n"
@@ -4415,9 +4442,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 3)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 2)))
+    (lean4-test--newline-and-assert-prefix-stable "    ")))
 
-(ert-deftest lean4-indent--newline-after-proof-intro-by-does-not-overindent-body ()
+(ert-deftest lean4-indent--newline-after-proof-intro-by-keeps-local-continuation ()
   (lean4-test-with-indent-buffer
       (concat
        "@[simp]\n"
@@ -4428,9 +4455,28 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 3)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 4)))
+    (lean4-test--newline-and-assert-prefix-stable "      ")))
 
-(ert-deftest lean4-indent--newline-after-angle-fun-proofs-does-not-overindent ()
+(ert-deftest lean4-indent--newline-after-have-by-ignores-following-sorry ()
+  (let ((snippet
+         (concat
+          "theorem zero_mul (a : R) : 0 * a = 0 := by\n"
+          "  have h : 0 * a + 0 * a = 0 * a + 0 := by\n"))
+        (expected "    "))
+    (lean4-test-with-indent-buffer
+        (concat snippet "  sorry\n")
+      (goto-char (point-min))
+      (forward-line 1)
+      (end-of-line)
+      (lean4-test--newline-and-assert expected))
+    (lean4-test-with-indent-buffer
+        snippet
+      (goto-char (point-min))
+      (forward-line 1)
+      (end-of-line)
+      (lean4-test--newline-and-assert expected))))
+
+(ert-deftest lean4-indent--newline-after-angle-fun-proofs-opens-local-body ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem bind_decode_iff {f : α → β → Option σ} :\n"
@@ -4440,9 +4486,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 2)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 4)))
+    (lean4-test--newline-and-assert-prefix-stable "      ")))
 
-(ert-deftest lean4-indent--newline-after-closed-application-line-dedents-to-next-sibling ()
+(ert-deftest lean4-indent--newline-after-closed-application-line-keeps-local-continuation ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem bind_decode_iff {f : α → β → Option σ} :\n"
@@ -4457,9 +4503,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 7)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 6)))
+    (lean4-test--newline-and-assert-prefix-stable "          ")))
 
-(ert-deftest lean4-indent--newline-after-proof-branch-dedents-to-next-sibling ()
+(ert-deftest lean4-indent--newline-after-proof-branch-opens-proof-body ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem bind_decode_iff {f : α → β → Option σ} :\n"
@@ -4479,9 +4525,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 12)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 4)))
+    (lean4-test--newline-and-assert-prefix-stable "      ")))
 
-(ert-deftest lean4-indent--newline-after-closed-inner-application-dedents-to-sibling ()
+(ert-deftest lean4-indent--newline-after-closed-inner-application-keeps-local-continuation ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem bind_decode_iff {f : α → β → Option σ} :\n"
@@ -4495,9 +4541,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 6)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 8)))
+    (lean4-test--newline-and-assert-prefix-stable "              ")))
 
-(ert-deftest lean4-indent--newline-after-inner-coloneq-dedents-to-enclosing-body ()
+(ert-deftest lean4-indent--newline-after-inner-coloneq-opens-inner-body ()
   (lean4-test-with-indent-buffer
       (concat
        "theorem bind_decode_iff {f : α → β → Option σ} :\n"
@@ -4518,9 +4564,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 13)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 6)))
+    (lean4-test--newline-and-assert "                ")))
 
-(ert-deftest lean4-indent--newline-in-wrapped-variable-block-dedents-to-sibling ()
+(ert-deftest lean4-indent--newline-in-wrapped-variable-block-keeps-assumption-column ()
   (lean4-test-with-indent-buffer
       (concat
        "variable\n"
@@ -4533,9 +4579,9 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (goto-char (point-min))
     (forward-line 1)
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 2)))
+    (lean4-test--newline-and-assert-prefix-stable "    ")))
 
-(ert-deftest lean4-indent--newline-after-single-line-variable-dedents-to-wrapped-sibling ()
+(ert-deftest lean4-indent--newline-after-single-line-variable-keeps-assumption-column ()
   (lean4-test-with-indent-buffer
       (concat
        "variable [∀ X Y, FunLike (FA X Y) (CA X) (CA Y)] [ConcreteCategory.{v'} A FA]\n"
@@ -4543,7 +4589,7 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "\n")
     (goto-char (point-min))
     (end-of-line)
-    (lean4-test--newline-next-line-bounds-and-assert 2)))
+    (lean4-test--newline-and-assert-prefix-stable "    ")))
 
 (ert-deftest lean4-indent--newline-after-bullet-exact-does-not-overindent-next-bullet ()
   (lean4-test-with-indent-buffer

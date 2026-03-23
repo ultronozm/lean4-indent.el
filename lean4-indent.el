@@ -4119,7 +4119,9 @@ to cycle to shallower alternatives."
        ((and prev-pos
              open-delimited-body-indent
              (lean4-indent--line-ends-with-comma-p prev-text-no-comment)
-             (lean4-indent--inline-open-paren-argument-column prev-text))
+             (lean4-indent--inline-open-paren-argument-column prev-text)
+             (not (lean4-indent--ordinary-proof-tactic-line-p
+                   prev-text-no-comment)))
         (max (+ open-delimited-body-indent step)
              (+ (lean4-indent--inline-open-paren-argument-column prev-text) step)))
        ((and prev-pos
@@ -4336,78 +4338,6 @@ already-closed parenthesized argument."
                (string-match-p "[])}⟩]\\.[[:word:]_'.]+\\s-*$" prev-text-no-comment)
                (not open-prev)))))))
 
-(defun lean4-indent--newline-helper-next-line-upper-bound (base-indent)
-  "Return a safe upper bound for blank-line helper indentation, or nil.
-
-This uses the following existing nonblank line only as a cap, never as a
-driver.  The cap applies when the next line belongs to the same enclosing
-top-level item and either stays within that item's body or does not continue
-deeper than the base indentation already computed for the blank line."
-  (when (and (lean4-indent--line-blank-p (lean4-indent--line-text (point)))
-             base-indent)
-    (let ((prev-pos (lean4-indent--prev-nonblank))
-          (next-pos (lean4-indent--next-nonblank)))
-      (when (and prev-pos next-pos)
-        (let* ((prev-anchor-p
-                (lean4-indent--line-structural-top-level-anchor-p prev-pos))
-               (next-anchor-p
-                (lean4-indent--line-structural-top-level-anchor-p next-pos))
-               (prev-text-no-comment
-                (if (and prev-pos (not (lean4-indent--comment-line-p prev-pos)))
-                    (lean4-indent--line-text-no-comment prev-pos)
-                  ""))
-               (next-text-no-comment
-                (if (and next-pos (not (lean4-indent--comment-line-p next-pos)))
-                    (lean4-indent--line-text-no-comment next-pos)
-                  ""))
-               (next-companion-anchor-p
-                (string-match-p
-                 "\\`[ \t]*\\_<\\(?:termination_by\\|decreasing_by\\|deriving\\)\\_>"
-                 next-text-no-comment))
-               (prev-top-level-context
-                (lean4-indent--top-level-context prev-pos lean4-indent-offset))
-               (next-top-level-context
-                (lean4-indent--top-level-context next-pos lean4-indent-offset))
-               (prev-item-pos
-                (or (and prev-anchor-p prev-pos)
-                    (plist-get prev-top-level-context :pos)))
-               (next-item-pos
-                (or (and next-anchor-p next-pos)
-                    (plist-get next-top-level-context :pos)))
-               (prev-body-indent
-                (or (and prev-anchor-p
-                         (+ (lean4-indent--line-indent prev-pos) lean4-indent-offset))
-                    (plist-get prev-top-level-context :body-indent)))
-               (allow-companion-anchor-cap-p
-                (and prev-item-pos
-                     next-companion-anchor-p
-                     prev-body-indent
-                     (<= (lean4-indent--line-indent prev-pos) prev-body-indent)))
-               (same-item-p
-                (or (= prev-item-pos next-item-pos)
-                    allow-companion-anchor-cap-p))
-               (next-indent (lean4-indent--line-indent next-pos))
-               (crosses-calc-proof-to-next-step-p
-                (and prev-pos
-                     next-pos
-                     (lean4-indent--in-calc-block-p prev-pos)
-                     (> (lean4-indent--line-indent prev-pos)
-                        (lean4-indent--line-indent next-pos))
-                     (not (lean4-indent--line-starts-with-calc-step-p prev-text-no-comment))
-                     (not (lean4-indent--line-starts-with-relop-p prev-text-no-comment))
-                     (or (lean4-indent--line-starts-with-calc-step-p next-text-no-comment)
-                         (lean4-indent--line-starts-with-relop-p next-text-no-comment)))))
-          (and prev-item-pos
-               next-item-pos
-               prev-body-indent
-               same-item-p
-               (not crosses-calc-proof-to-next-step-p)
-               (not (lean4-indent--comment-line-p next-pos))
-               (not (lean4-indent--string-line-p next-pos))
-               (or (>= next-indent prev-body-indent)
-                   (<= next-indent base-indent))
-               next-indent))))))
-
 (defun lean4-indent-line-function ()
   "Indent current line according to Lean 4 rules."
   (interactive)
@@ -4442,22 +4372,17 @@ deeper than the base indentation already computed for the blank line."
                 (and newline-prev-pos
                      (lean4-indent--line-indent newline-prev-pos)))
                (raw-computed
-                (if (and newline-computed
-                         (not (and (> newline-computed base-computed)
-                                   newline-prev-indent
-                                   (>= base-computed newline-prev-indent)
-                                   (lean4-indent--prefer-base-indent-over-newline-helper-p))))
+               (if (and newline-computed
+                        (not (and (> newline-computed base-computed)
+                                  newline-prev-indent
+                                  (>= base-computed newline-prev-indent)
+                                  (lean4-indent--prefer-base-indent-over-newline-helper-p))))
                     (if (and (< newline-computed base-computed)
                              (lean4-indent--prefer-newline-helper-over-base-p))
                         newline-computed
                       (max newline-computed base-computed))
                   base-computed))
-               (newline-upper-bound
-                (lean4-indent--newline-helper-next-line-upper-bound
-                 base-computed))
-               (computed (if newline-upper-bound
-                             (min raw-computed newline-upper-bound)
-                           raw-computed))
+               (computed raw-computed)
                (current (current-indentation))
                (tabp (eq this-command 'indent-for-tab-command))
                (target (cond
