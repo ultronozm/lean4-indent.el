@@ -2300,6 +2300,12 @@ not inside such a declaration."
                (+ prev-indent step))))
         ('coloneq-by
          (cond
+          ((and (lean4-indent--coloneq-by-opener-line-p prev-text-no-comment)
+                (string-match-p
+                 "\\`[ \t]*\\(?:have\\|suffices\\|let\\)\\_>"
+                 prev-text-no-comment)
+                (not (lean4-indent--line-blank-p current-text)))
+           (+ prev-indent step))
           (prev-calc-body-indent)
           (anchor-starts-calc
            (+ prev-indent step))

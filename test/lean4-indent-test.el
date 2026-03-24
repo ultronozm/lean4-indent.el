@@ -4514,6 +4514,28 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (search-forward ":= by")
     (lean4-test--newline-and-assert "    exact trivial")))
 
+(ert-deftest lean4-indent--split-branch-local-have-by-sorry-keeps-proof-indent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  induction True.intro using True.casesOn with\n"
+       "  | intro =>\n"
+       "      have h : True := by sorry\n")
+    (lean4-test--goto-line 4)
+    (search-forward ":= by")
+    (lean4-test--newline-and-assert "        sorry")))
+
+(ert-deftest lean4-indent--split-branch-local-have-by-tactic-keeps-proof-indent ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  induction True.intro using True.casesOn with\n"
+       "  | intro =>\n"
+       "      have h : True := by exact trivial\n")
+    (lean4-test--goto-line 4)
+    (search-forward ":= by")
+    (lean4-test--newline-and-assert "        exact trivial")))
+
 (ert-deftest lean4-indent--newline-after-complete-have-line-keeps-proof-column-for-calc ()
   (lean4-test-with-indent-buffer
       (concat
