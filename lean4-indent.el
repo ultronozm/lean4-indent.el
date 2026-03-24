@@ -1078,9 +1078,20 @@ were the live continuation for a following blank line."
     (and tail
          (not (string-empty-p tail))
          (not (string-match-p "\\(?:;\\|<;>\\)" tail))
-         (string-match-p
-          "\\`\\(?:gcongr\\|rw\\|simp_rw\\|refine\\|apply\\|exact_mod_cast\\|show\\|have\\|let\\|constructor\\|aesop\\|omega\\|linarith\\|positivity\\|calc\\)\\_>"
-          tail))))
+         (or
+          (string-match-p "\\`calc\\_>" tail)
+          (string-match-p
+           "\\`\\(?:gcongr\\|constructor\\|aesop\\|omega\\|linarith\\|positivity\\)\\s-*\\'"
+           tail)
+          (string-match-p
+           "\\`\\(?:apply\\|refine\\|exact_mod_cast\\)\\s-*\\'"
+           tail)
+          (string-match-p
+           "\\`\\(?:show\\|have\\|let\\)\\_>.*\\(?::\\|:=\\|from\\|→\\|->\\)\\s-*\\'"
+           tail)
+          (string-match-p
+           "\\`\\(?:rw\\|simp_rw\\)\\(?:\\s-*\\|\\s-+.*\\[[^]]*\\)\\'"
+           tail)))))
 
 (defun lean4-indent--inline-coloneq-by-complete-p (text)
   "Return non-nil if TEXT has an inline `:= by` body that looks complete."
@@ -1088,6 +1099,14 @@ were the live continuation for a following blank line."
     (and tail
          (not (string-empty-p tail))
          (not (lean4-indent--inline-coloneq-by-starter-p text)))))
+
+(defun lean4-indent--inline-coloneq-by-finished-line-p (text)
+  "Return non-nil if TEXT ends with a locally finished inline `:= by` proof.
+
+This excludes lines that still open an embedded `calc` continuation.  The
+inline proof tail may be complete while the enclosing term is not."
+  (and (lean4-indent--inline-coloneq-by-complete-p text)
+       (not (lean4-indent--line-contains-calc-p text))))
 
 (defun lean4-indent--projection-application-tail-line-p (text)
   "Return non-nil when TEXT ends in a continued projection application.
@@ -2444,14 +2463,17 @@ not inside such a declaration."
            (not (string-match-p ":=\\s-*{" prev-text-no-comment))
            (not prev-line-ends-with-op)
            (not prev-line-ends-with-comma))
-      (if (and starts-with-paren
-               anchor-pos
-               (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
-               (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
+     (if (and starts-with-paren
+              anchor-pos
+              (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
+              (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
           prev-indent
-        (if (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+        (if (and (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+                 (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
+            prev-indent
+          (if (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
             (+ prev-indent step)
-          prev-indent)))
+            prev-indent))))
      ;; 8) Anonymous literal ⟨…⟩
      ((and prev-unmatched-angle
            starts-with-paren
@@ -3020,6 +3042,12 @@ to cycle to shallower alternatives."
                       (buffer-substring-no-properties
                        (line-beginning-position) open-paren-pos-prev-on-line))))))
        (cond
+       ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>.*:=\\s-*\\_<by\\_>\\s-+\\S-"
+              prev-text-no-comment)
+             (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
+        prev-indent)
        ((and prev-pos
              (string-match-p "]\\s-*$" prev-text)
              (lean4-indent--previous-bracket-clause-indent prev-pos))
@@ -3590,7 +3618,7 @@ to cycle to shallower alternatives."
              (lean4-indent--in-calc-block-p prev-pos)
              (or (lean4-indent--line-starts-with-calc-step-p prev-text)
                  (lean4-indent--line-starts-with-relop-p prev-text))
-             (lean4-indent--inline-coloneq-by-complete-p prev-text-no-comment))
+             (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
         prev-indent)
        ((and prev-pos
              (lean4-indent--in-calc-block-p prev-pos)
@@ -3622,7 +3650,7 @@ to cycle to shallower alternatives."
              (lean4-indent--in-calc-block-p prev-pos)
              (not (lean4-indent--line-starts-with-relop-p prev-text))
              (not (lean4-indent--line-starts-with-calc-step-p prev-text))
-             (lean4-indent--inline-coloneq-by-complete-p prev-text-no-comment))
+             (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
         (let ((body-indent (lean4-indent--calc-block-body-indent prev-pos prev-indent step)))
           (if body-indent
               (+ body-indent step)

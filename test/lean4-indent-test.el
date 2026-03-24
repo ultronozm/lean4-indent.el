@@ -4486,6 +4486,16 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
       (end-of-line)
       (lean4-test--newline-and-assert expected))))
 
+(ert-deftest lean4-indent--newline-after-inline-have-by-rw-keeps-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem zero_mul (a : R) : 0 * a = 0 := by\n"
+       "  have h : 0 * a + 0 * a = 0 * a + 0 := by rw [← add_mul, add_zero, add_zero]\n"
+       "  rw [add_left_cancel h]\n")
+    (lean4-test--goto-line 2)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
 (ert-deftest lean4-indent--newline-after-angle-fun-proofs-opens-local-body ()
   (lean4-test-with-indent-buffer
       (concat
