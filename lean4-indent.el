@@ -1122,6 +1122,10 @@ inline proof tail may be complete while the enclosing term is not."
   (and (lean4-indent--inline-coloneq-by-complete-p text)
        (not (lean4-indent--line-contains-calc-p text))))
 
+(defun lean4-indent--coloneq-by-opener-line-p (text)
+  "Return non-nil if TEXT ends with a bare `:= by` proof opener."
+  (string-match-p ":=\\s-*\\_<by\\_>\\s-*\\'" text))
+
 (defun lean4-indent--projection-application-tail-line-p (text)
   "Return non-nil when TEXT ends in a continued projection application.
 
@@ -4430,6 +4434,12 @@ already-closed parenthesized argument."
                   (make-hash-table :test #'equal :size 32))))
         (let* ((newline-computed (lean4-indent--newline-blank-line-indent))
                (base-computed (lean4-indent--compute-indent))
+               (prev-pos (save-excursion (lean4-indent--prev-nonblank)))
+               (prev-text-no-comment
+                (and prev-pos
+                     (if (lean4-indent--comment-line-p prev-pos)
+                         ""
+                       (lean4-indent--line-text-no-comment prev-pos))))
                (newline-prev-pos
                 (and newline-computed
                      (save-excursion (lean4-indent--prev-nonblank))))
@@ -4450,12 +4460,19 @@ already-closed parenthesized argument."
                (computed raw-computed)
                (current (current-indentation))
                (tabp (eq this-command 'indent-for-tab-command))
+               ;; When a line is split immediately after `:= by`, the inherited
+               ;; indentation on the moved tactic tail is not meaningful.
+               (split-inline-coloneq-by-tail-line-p
+                (and prev-text-no-comment
+                     (< current computed)
+                     (lean4-indent--coloneq-by-opener-line-p prev-text-no-comment)))
                (target (cond
                         ((and tabp (eq last-command 'indent-for-tab-command))
                          (lean4-indent--cycle-indent computed current))
                         ((and (not tabp)
                               (not newline-computed)
                               (> current 0)
+                              (not split-inline-coloneq-by-tail-line-p)
                               (or (and (lean4-indent--acceptable-tactic-indent-p computed current)
                                        (or (< current computed)
                                            lean4-indent--preserve-tactic-region-indentation))
