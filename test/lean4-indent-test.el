@@ -4732,6 +4732,16 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-rw-comma-line-keeps-bracket-clause-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem mul_inv_rev (a b : G) : (a * b)⁻¹ = b⁻¹ * a⁻¹ := by\n"
+       "  rw [← one_mul (b⁻¹ * a⁻¹), ← inv_mul_cancel (a * b), mul_assoc, mul_assoc, ← mul_assoc b b⁻¹,\n"
+       "    mul_inv_cancel, one_mul, mul_inv_cancel, mul_one]\n")
+    (lean4-test--goto-line 2)
+    (end-of-line)
+    (lean4-test--newline-and-assert "    ")))
+
 (ert-deftest lean4-indent--newline-after-bare-refine-can-start-deep-term ()
   (lean4-test-with-indent-buffer
       (concat

@@ -580,6 +580,20 @@ This handles inline proof tails such as `intros; simp only [...]`."
          text)
     (match-beginning 1)))
 
+(defun lean4-indent--line-opens-bracket-clause-p (text)
+  "Return non-nil when TEXT opens a multiline `rw`/`simp`-style bracket clause."
+  (string-match-p
+   "\\`[ \t]*\\(?:simp\\(?:\\?\\|_rw\\)?\\|rw\\|dsimp\\(?:\\s-+only\\)?\\)\\_>.*\\[[^]]*\\'"
+   text))
+
+(defun lean4-indent--line-opens-bracket-clause-with-multiple-items-p (text)
+  "Return non-nil when TEXT opens a multiline bracket clause after several items.
+
+This covers wrapped lines like `rw [foo, bar,` where the natural continuation
+is the sibling rewrite-entry column rather than another deeper step."
+  (and (lean4-indent--line-opens-bracket-clause-p text)
+       (string-match-p "\\[[^]]*,.*," text)))
+
 (defun lean4-indent--simple-bare-head-after-outer-coloneq-p (text &optional pos)
   "Return non-nil when TEXT ends with a single bare head after an outer `:='.
 
@@ -1144,9 +1158,7 @@ argument on the next line is a natural deep continuation."
           (unless (or (lean4-indent--line-blank-p text)
                       (lean4-indent--comment-line-p (point)))
             (cond
-             ((string-match-p
-               "\\`[ \t]*\\(?:simp\\(?:\\?\\|_rw\\)?\\|rw\\|dsimp\\(?:\\s-+only\\)?\\)\\_>.*\\[[^]]*\\'"
-               text)
+             ((lean4-indent--line-opens-bracket-clause-p text)
               (setq found indent))
              ((< indent start-indent)
               (setq found 'stop))))))
@@ -3079,6 +3091,11 @@ to cycle to shallower alternatives."
              (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
         (+ (lean4-indent--semicolon-bracket-tactic-column prev-text-no-comment)
            step))
+       ((and prev-pos
+             (lean4-indent--line-opens-bracket-clause-with-multiple-items-p
+              prev-text-no-comment)
+             (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+        (+ prev-indent step))
        ((and prev-pos
              (lean4-indent--line-top-level-declaration-head-p prev-text-no-comment)
              prev-line-has-outer-coloneq
