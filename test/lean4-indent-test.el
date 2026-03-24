@@ -4515,6 +4515,36 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "  ")))
 
+(ert-deftest lean4-indent--newline-after-use-in-branch-keeps-branch-body-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example {S T : Submodule K V} {x : V} (h : x ∈ S ⊔ T) :\n"
+       "    ∃ s ∈ S, ∃ t ∈ T, x = s + t := by\n"
+       "  induction h using Submodule.span_induction with\n"
+       "  | mem y h =>\n"
+       "      sorry\n"
+       "  | zero =>\n"
+       "      use 0\n"
+       "      constructor\n")
+    (lean4-test--goto-line 7)
+    (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
+
+(ert-deftest lean4-indent--newline-after-constructor-in-branch-keeps-branch-body-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example {S T : Submodule K V} {x : V} (h : x ∈ S ⊔ T) :\n"
+       "    ∃ s ∈ S, ∃ t ∈ T, x = s + t := by\n"
+       "  induction h using Submodule.span_induction with\n"
+       "  | mem y h =>\n"
+       "      sorry\n"
+       "  | zero =>\n"
+       "      use 0\n"
+       "      constructor\n")
+    (lean4-test--goto-line 8)
+    (end-of-line)
+    (lean4-test--newline-and-assert "      ")))
+
 (ert-deftest lean4-indent--newline-after-angle-fun-proofs-opens-local-body ()
   (lean4-test-with-indent-buffer
       (concat

@@ -501,7 +501,7 @@ current line."
 (defun lean4-indent--ordinary-proof-tactic-line-p (text)
   "Return non-nil if TEXT starts a routine proof tactic command."
   (string-match-p
-   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:intro\\|rw\\|simp\\(?:_rw\\| only\\)?\\|unfold\\|cases\\|rcases\\|subst\\|replace\\|obtain\\|simpa\\|exact\\|refine\\|apply\\|have\\|let\\)\\_>"
+   "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:intro\\|rw\\|simp\\(?:_rw\\| only\\)?\\|unfold\\|cases\\|rcases\\|subst\\|replace\\|obtain\\|simpa\\|exact\\|refine\\|apply\\|use\\|constructor\\|have\\|let\\)\\_>"
    text))
 
 (defun lean4-indent--filter-upwards-line-p (text)
@@ -3059,6 +3059,18 @@ to cycle to shallower alternatives."
               "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|let\\|suffices\\)\\_>.*:=\\s-*\\_<by\\_>\\s-+\\S-"
               prev-text-no-comment)
              (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
+        prev-indent)
+       ((and prev-pos
+             anchor-pos
+             (> prev-indent anchor-indent)
+             (or (lean4-indent--focus-dot-line-p anchor-text)
+                 (lean4-indent--branch-line-p anchor-text))
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:use\\|constructor\\)\\_>"
+              prev-text-no-comment)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-body-intro-kind prev-text-no-comment)))
         prev-indent)
        ((and prev-pos
              (string-match-p
