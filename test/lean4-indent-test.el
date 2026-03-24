@@ -3345,7 +3345,17 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
        "  calc\n"
        "      _ = a := by\n")
     (lean4-test--goto-eob)
-    (lean4-test--newline-and-assert "            ")))
+    (lean4-test--newline-and-assert "        ")))
+
+(ert-deftest lean4-indent--newline-after-calc-step-by-keeps-shallow-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "theorem mul_inv_cancel (a : G) : a * a⁻¹\n"
+       "= 1 := by\n"
+       "  calc\n"
+       "    _ = 1 * (a * a⁻¹) := by\n")
+    (lean4-test--goto-eob)
+    (lean4-test--newline-and-assert "      ")))
 
 (ert-deftest lean4-indent--newline-after-inline-calc-inequality-by-indents-proof-body ()
   (lean4-test-with-indent-buffer
