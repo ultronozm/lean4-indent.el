@@ -3061,6 +3061,18 @@ to cycle to shallower alternatives."
              (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
         prev-indent)
        ((and prev-pos
+             (string-match-p
+              "\\`[ \t]*\\(?:·\\s-*\\)?\\(?:have\\|suffices\\)\\_>.*:\\s-*\\S-+"
+              prev-text-no-comment)
+             (not prev-anonymous-typed-local-decl-p)
+             (not prev-line-has-outer-coloneq)
+             (not open-delimited-body-indent)
+             (not (lean4-indent--line-ends-with-comma-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-op-p prev-text-no-comment))
+             (not (lean4-indent--line-ends-with-term-continuation-p
+                   prev-text-no-comment)))
+        prev-indent)
+       ((and prev-pos
              (string-match-p "]\\s-*$" prev-text)
              (lean4-indent--previous-bracket-clause-indent prev-pos))
         (lean4-indent--previous-bracket-clause-indent prev-pos))

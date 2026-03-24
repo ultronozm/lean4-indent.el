@@ -4496,6 +4496,25 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-and-assert "  ")))
 
+(ert-deftest lean4-indent--newline-after-complete-have-line-keeps-proof-column-for-calc ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : 2*a*b ≤ a^2 + b^2 := by\n"
+       "  have h : 0 ≤ a^2 - 2*a*b + b^2\n")
+    (lean4-test--goto-line 2)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
+(ert-deftest lean4-indent--newline-after-complete-have-line-keeps-proof-column-for-linarith ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : 2*a*b ≤ a^2 + b^2 := by\n"
+       "  have h : 0 ≤ a^2 - 2*a*b + b^2\n"
+       "  linarith\n")
+    (lean4-test--goto-line 2)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
 (ert-deftest lean4-indent--newline-after-angle-fun-proofs-opens-local-body ()
   (lean4-test-with-indent-buffer
       (concat
