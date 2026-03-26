@@ -3269,6 +3269,15 @@ variable {R : Type*} {A : Type*} [CommSemiring R] [Semiring A] [Algebra R A]")
     (end-of-line)
     (lean4-test--newline-lower-bound-and-assert)))
 
+(ert-deftest lean4-indent--newline-after-complete-inline-have-stays-at-proof-column ()
+  (lean4-test-with-indent-buffer
+      (concat
+       "example : True := by\n"
+       "  have hx' := h hx\n")
+    (lean4-test--goto-line 2)
+    (end-of-line)
+    (lean4-test--newline-and-assert "  ")))
+
 (ert-deftest lean4-indent--newline-after-apply-rules-line-indents-following-list ()
   (lean4-test-with-indent-buffer
       (concat

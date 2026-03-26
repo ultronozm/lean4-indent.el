@@ -1126,6 +1126,19 @@ inline proof tail may be complete while the enclosing term is not."
   "Return non-nil if TEXT ends with a bare `:= by` proof opener."
   (string-match-p ":=\\s-*\\_<by\\_>\\s-*\\'" text))
 
+(defun lean4-indent--complete-inline-have-rhs-line-p (text pos)
+  "Return non-nil if TEXT is a local `have :=` line with a finished RHS.
+
+This excludes inline `:= by` proofs and multiline continuations that still
+have unmatched delimiters at end of line."
+  (and pos
+       (string-match-p "\\`[ \t]*have\\_>.*:=\\s-*\\S-+" text)
+       (not (lean4-indent--inline-coloneq-by-line-p text))
+       (not (lean4-indent--line-ends-with-op-p text))
+       (not (lean4-indent--line-ends-with-comma-p text))
+       (not (lean4-indent--line-body-intro-kind text))
+       (not (lean4-indent--open-paren-pos-at-eol pos))))
+
 (defun lean4-indent--projection-application-tail-line-p (text)
   "Return non-nil when TEXT ends in a continued projection application.
 
@@ -2485,17 +2498,22 @@ not inside such a declaration."
            (not (string-match-p ":=\\s-*{" prev-text-no-comment))
            (not prev-line-ends-with-op)
            (not prev-line-ends-with-comma))
-     (if (and starts-with-paren
-              anchor-pos
-              (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
-              (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
-          prev-indent
-        (if (and (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
-                 (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
-            prev-indent
-          (if (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
-            (+ prev-indent step)
-            prev-indent))))
+      (cond
+       ((and starts-with-paren
+             anchor-pos
+             (memq anchor-body-intro-kind '(fat-arrow fun-arrow by coloneq-by))
+             (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment))
+        prev-indent)
+       ((and (string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+             (lean4-indent--inline-coloneq-by-finished-line-p prev-text-no-comment))
+        prev-indent)
+       ((lean4-indent--complete-inline-have-rhs-line-p
+         prev-text-no-comment prev-pos)
+        prev-indent)
+       ((string-match-p "\\`[ \t]*have\\_>" prev-text-no-comment)
+        (+ prev-indent step))
+       (t
+        prev-indent)))
      ;; 8) Anonymous literal ⟨…⟩
      ((and prev-unmatched-angle
            starts-with-paren
